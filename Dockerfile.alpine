@@ -1,0 +1,122 @@
+FROM alpine:edge AS build
+
+ARG WOLFSSL_VERSION=5.8.2-stable
+ARG CURL_VERSION=8.11.1
+ARG SC_WOLFCURL_PREFIX=/opt/sc-wolfcurl
+
+RUN apk add --no-cache \
+        autoconf \
+        automake \
+        binutils \
+        ca-certificates \
+        clang22 \
+        cmake \
+        git \
+        libtool \
+        libsodium-dev \
+        lld22 \
+        linux-headers \
+        llvm22 \
+        llvm22-dev \
+        make \
+        musl-dev \
+        pkgconf \
+        wget
+
+ENV CC=clang-22
+ENV CXX=clang++-22
+ENV AR=/usr/lib/llvm22/bin/llvm-ar
+ENV RANLIB=ranlib
+ENV LLVM_CONFIG=llvm-config-22
+ENV PKG_CONFIG_PATH=${SC_WOLFCURL_PREFIX}/lib/pkgconfig:${SC_WOLFCURL_PREFIX}/lib64/pkgconfig
+
+WORKDIR /tmp/deps
+
+RUN wget -q "https://github.com/wolfSSL/wolfssl/archive/refs/tags/v${WOLFSSL_VERSION}.tar.gz" -O wolfssl.tar.gz \
+    && tar -xzf wolfssl.tar.gz \
+    && cd "wolfssl-${WOLFSSL_VERSION}" \
+    && if [ -x ./autogen.sh ]; then ./autogen.sh; fi \
+    && ./configure \
+        --prefix="${SC_WOLFCURL_PREFIX}" \
+        --enable-curl \
+        --enable-tls13 \
+        --enable-opensslextra \
+        CPPFLAGS=-DHAVE_CURL \
+    && make -j"$(nproc)" \
+    && make install \
+    && cd /tmp/deps \
+    && wget -q "https://curl.se/download/curl-${CURL_VERSION}.tar.gz" -O curl.tar.gz \
+    && tar -xzf curl.tar.gz \
+    && cd "curl-${CURL_VERSION}" \
+    && ./configure \
+        --prefix="${SC_WOLFCURL_PREFIX}" \
+        --with-wolfssl="${SC_WOLFCURL_PREFIX}" \
+        --without-gnutls \
+        --without-mbedtls \
+        --without-rustls \
+        --without-brotli \
+        --without-zstd \
+        --without-libpsl \
+        --without-libidn2 \
+        --without-nghttp2 \
+        --disable-ldap \
+        --disable-ldaps \
+        --disable-manual \
+    && make -j"$(nproc)" \
+    && make install \
+    && LD_LIBRARY_PATH="${SC_WOLFCURL_PREFIX}/lib:${SC_WOLFCURL_PREFIX}/lib64" \
+        "${SC_WOLFCURL_PREFIX}/bin/curl" --version | grep -q wolfSSL \
+    && rm -rf /tmp/deps
+
+WORKDIR /src
+COPY . .
+
+RUN cmake -S . -B /tmp/smolclaw-build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER=clang-22 \
+        -DCMAKE_CXX_COMPILER=clang++-22 \
+        -DCMAKE_AR=/usr/lib/llvm22/bin/llvm-ar \
+        -DCMAKE_RANLIB=ranlib \
+        -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld \
+        -DCMAKE_PREFIX_PATH="${SC_WOLFCURL_PREFIX}" \
+        -DCURL_ROOT="${SC_WOLFCURL_PREFIX}" \
+        -DSC_ENABLE_GATEWAY=OFF \
+        -DSC_ENABLE_PLUGINS=OFF \
+        -DSC_ENABLE_WASM_PLUGINS=OFF \
+        -DSC_ENABLE_HARDWARE=OFF \
+        -DSC_ENABLE_POSTGRES=OFF \
+        -DSC_ENABLE_VOICE=OFF \
+        -DSC_ENABLE_AUDIO_PREPROCESSING=OFF \
+        -DSC_ENABLE_THIRD_PARTY_WEBSOCKET_SERVER=OFF \
+        -DSC_ENABLE_THIRD_PARTY_WEBSOCKET_CLIENT=OFF \
+        -DSC_CHANNEL_TELEGRAM=ON \
+    && cmake --build /tmp/smolclaw-build --config Release --target smolclaw -j \
+    && strip /tmp/smolclaw-build/smolclaw
+
+FROM alpine:edge AS runtime
+
+ARG SC_WOLFCURL_PREFIX=/opt/sc-wolfcurl
+ENV SMOLCLAW_CONFIG=/etc/smolclaw/config.toml
+ENV SMOLCLAW_WORKSPACE=/var/lib/smolclaw
+ENV SC_LOG=warn
+ENV LD_LIBRARY_PATH=${SC_WOLFCURL_PREFIX}/lib:${SC_WOLFCURL_PREFIX}/lib64
+
+RUN apk add --no-cache \
+        ca-certificates \
+        libgcc \
+        libsodium \
+        sqlite-libs \
+        zlib \
+    && addgroup -S smolclaw \
+    && adduser -S -D -h /var/lib/smolclaw -s /sbin/nologin -G smolclaw smolclaw \
+    && mkdir -p /etc/smolclaw /var/lib/smolclaw \
+    && chown -R smolclaw:smolclaw /etc/smolclaw /var/lib/smolclaw
+
+COPY --from=build ${SC_WOLFCURL_PREFIX} ${SC_WOLFCURL_PREFIX}
+COPY --from=build /tmp/smolclaw-build/smolclaw /usr/local/bin/smolclaw
+
+USER smolclaw
+WORKDIR /var/lib/smolclaw
+
+ENTRYPOINT ["/usr/local/bin/smolclaw"]
+CMD ["daemon"]

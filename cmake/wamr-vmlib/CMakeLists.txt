@@ -1,0 +1,47 @@
+cmake_minimum_required(VERSION 3.25)
+
+project(SmolClawWAMR
+    LANGUAGES C ASM
+)
+
+if(NOT DEFINED WAMR_ROOT_DIR)
+    get_filename_component(WAMR_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+endif()
+
+set(WAMR_BUILD_INTERP 1)
+set(WAMR_BUILD_FAST_INTERP 1)
+set(WAMR_BUILD_LIBC_WASI 1)
+set(WAMR_BUILD_LIBC_BUILTIN 0)
+set(WAMR_BUILD_AOT 0)
+set(WAMR_BUILD_JIT 0)
+set(WAMR_BUILD_FAST_JIT 0)
+set(WAMR_BUILD_LIB_PTHREAD 0)
+set(WAMR_BUILD_LIB_PTHREAD_SEMAPHORE 0)
+set(WAMR_BUILD_LIB_WASI_THREADS 0)
+set(WAMR_BUILD_LIB_SOCKET 0)
+set(WAMR_BUILD_MINI_LOADER 0)
+set(WAMR_BUILD_MULTI_MODULE 0)
+set(WAMR_BUILD_SHARED_MEMORY 0)
+set(WAMR_BUILD_THREAD_MGR 0)
+set(WAMR_BUILD_WASI_NN 0)
+set(WAMR_BUILD_WASI_EPHEMERAL_NN 0)
+set(WAMR_BUILD_WAMR_COMPILER 0)
+set(WAMR_BUILD_SIMD 0)
+set(WAMR_BUILD_REF_TYPES 0)
+set(WAMR_BUILD_GC 0)
+
+include("${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake")
+
+add_library(vmlib STATIC ${WAMR_RUNTIME_LIB_SOURCE})
+target_include_directories(vmlib
+    PUBLIC
+        "${WAMR_ROOT_DIR}/core/iwasm/include"
+)
+set_target_properties(vmlib PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+)
+
+install(TARGETS vmlib ARCHIVE DESTINATION lib)
+install(DIRECTORY "${WAMR_ROOT_DIR}/core/iwasm/include/"
+        DESTINATION include/wamr
+        FILES_MATCHING PATTERN "*.h")

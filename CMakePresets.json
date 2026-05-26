@@ -1,0 +1,302 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 25,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_C_STANDARD": "23",
+                "CMAKE_C_STANDARD_REQUIRED": "ON",
+                "CMAKE_C_EXTENSIONS": "OFF",
+                "CMAKE_CXX_STANDARD": "17",
+                "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+                "CMAKE_CXX_EXTENSIONS": "OFF",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "release-base",
+            "hidden": true,
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_POSITION_INDEPENDENT_CODE": "ON",
+                "SC_SANITIZERS": "OFF",
+                "SC_HARDENING": "ON"
+            }
+        },
+        {
+            "name": "production-minimal-base",
+            "hidden": true,
+            "inherits": "release-base",
+            "cacheVariables": {
+                "SC_BUILD_FULL": "OFF",
+                "SC_ENABLE_RUNTIME": "ON",
+                "SC_ENABLE_GATEWAY": "OFF",
+                "SC_ENABLE_PLUGINS": "OFF",
+                "SC_ENABLE_WASM_PLUGINS": "OFF",
+                "SC_ENABLE_PYTHON_PLUGINS": "OFF",
+                "SC_ENABLE_HARDWARE": "OFF",
+                "SC_ENABLE_POSTGRES": "OFF",
+                "SC_ENABLE_VOICE": "OFF",
+                "SC_ENABLE_AUDIO_PREPROCESSING": "OFF",
+                "SC_ENABLE_CURL_HTTP2": "OFF",
+                "SC_ENABLE_THIRD_PARTY_DEPS": "ON",
+                "SC_ENABLE_THIRD_PARTY_WEBSOCKET_SERVER": "OFF",
+                "SC_ENABLE_THIRD_PARTY_WEBSOCKET_CLIENT": "OFF",
+                "SC_REQUIRE_SQLITE_FTS5": "ON",
+                "SC_PROVIDER_OPENAI": "ON",
+                "SC_PROVIDER_ANTHROPIC": "ON",
+                "SC_PROVIDER_GEMINI": "ON",
+                "SC_PROVIDER_OLLAMA": "ON",
+                "SC_PROVIDER_BEDROCK": "ON",
+                "SC_PROVIDER_OPENAI_COMPATIBLE": "ON",
+                "SC_PROVIDER_PROCESS_ADAPTERS": "ON",
+                "SC_CHANNEL_TELEGRAM": "ON",
+                "SC_CHANNEL_DISCORD": "OFF",
+                "SC_CHANNEL_WEBHOOK": "OFF",
+                "SC_CHANNEL_RABBITMQ": "OFF",
+                "SC_CHANNEL_MAIL": "OFF",
+                "SC_ENABLE_MIMALLOC": "OFF",
+                "SC_ENABLE_JEMALLOC": "OFF"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release",
+            "description": "Production-oriented release build with hardening enabled and optional heavy surfaces disabled.",
+            "inherits": "production-minimal-base",
+            "binaryDir": "${sourceDir}/build/release",
+            "cacheVariables": {
+                "SC_DEPS_PROVIDER": "github",
+                "SC_CURL_TLS_BACKEND": "mbedtls"
+            }
+        },
+        {
+            "name": "release-system",
+            "displayName": "Release (system dependencies)",
+            "description": "Hardened release build that requires dependency packages from the host system.",
+            "inherits": "production-minimal-base",
+            "binaryDir": "${sourceDir}/build/release-system",
+            "cacheVariables": {
+                "SC_DEPS_PROVIDER": "system"
+            }
+        },
+        {
+            "name": "release-auto",
+            "displayName": "Release (auto dependencies)",
+            "description": "Hardened release build that prefers system dependencies and falls back to pinned GitHub builds.",
+            "inherits": "production-minimal-base",
+            "binaryDir": "${sourceDir}/build/release-auto",
+            "cacheVariables": {
+                "SC_DEPS_PROVIDER": "auto",
+                "SC_CURL_TLS_BACKEND": "mbedtls"
+            }
+        },
+        {
+            "name": "release-full",
+            "displayName": "Release (full runtime)",
+            "description": "Hardened release build with common runtime, gateway, and channel surfaces enabled.",
+            "inherits": "release-base",
+            "binaryDir": "${sourceDir}/build/release-full",
+            "cacheVariables": {
+                "SC_BUILD_FULL": "ON",
+                "SC_DEPS_PROVIDER": "github",
+                "SC_CURL_TLS_BACKEND": "mbedtls",
+                "SC_ENABLE_PLUGINS": "OFF",
+                "SC_ENABLE_WASM_PLUGINS": "OFF",
+                "SC_ENABLE_PYTHON_PLUGINS": "OFF",
+                "SC_ENABLE_HARDWARE": "OFF",
+                "SC_ENABLE_VOICE": "OFF",
+                "SC_ENABLE_AUDIO_PREPROCESSING": "OFF"
+            }
+        },
+        {
+            "name": "relwithdebinfo",
+            "displayName": "RelWithDebInfo",
+            "description": "Optimized build with debug symbols for profiling, crash triage, and staging validation.",
+            "inherits": "production-minimal-base",
+            "binaryDir": "${sourceDir}/build/relwithdebinfo",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "SC_DEPS_PROVIDER": "auto",
+                "SC_CURL_TLS_BACKEND": "mbedtls"
+            }
+        },
+        {
+            "name": "asan",
+            "displayName": "ASan/UBSan",
+            "description": "Debug validation build with address, undefined behavior, and leak sanitizers enabled.",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build/asan",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "SC_DEPS_PROVIDER": "auto",
+                "SC_SANITIZERS": "ON",
+                "SC_HARDENING": "OFF"
+            }
+        },
+        {
+            "name": "wamr-debug",
+            "displayName": "WAMR Debug",
+            "description": "Debug build with native plugins and WAMR-backed WASM tool plugins enabled.",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build/wamr",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "SC_DEPS_PROVIDER": "auto",
+                "SC_ENABLE_PLUGINS": "ON",
+                "SC_ENABLE_WASM_PLUGINS": "ON",
+                "SC_HARDENING": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "release",
+            "displayName": "Release",
+            "configurePreset": "release",
+            "configuration": "Release",
+            "targets": [
+                "smolclaw"
+            ]
+        },
+        {
+            "name": "release-all",
+            "displayName": "Release (all targets)",
+            "configurePreset": "release",
+            "configuration": "Release"
+        },
+        {
+            "name": "release-system",
+            "displayName": "Release (system dependencies)",
+            "configurePreset": "release-system",
+            "configuration": "Release",
+            "targets": [
+                "smolclaw"
+            ]
+        },
+        {
+            "name": "release-auto",
+            "displayName": "Release (auto dependencies)",
+            "configurePreset": "release-auto",
+            "configuration": "Release",
+            "targets": [
+                "smolclaw"
+            ]
+        },
+        {
+            "name": "release-full",
+            "displayName": "Release (full runtime)",
+            "configurePreset": "release-full",
+            "configuration": "Release",
+            "targets": [
+                "smolclaw"
+            ]
+        },
+        {
+            "name": "relwithdebinfo",
+            "displayName": "RelWithDebInfo",
+            "configurePreset": "relwithdebinfo",
+            "configuration": "RelWithDebInfo"
+        },
+        {
+            "name": "asan",
+            "displayName": "ASan/UBSan",
+            "configurePreset": "asan",
+            "configuration": "Debug"
+        },
+        {
+            "name": "wamr-debug",
+            "displayName": "WAMR Debug",
+            "configurePreset": "wamr-debug",
+            "configuration": "Debug"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "release",
+            "displayName": "Release tests",
+            "configurePreset": "release",
+            "configuration": "Release",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "release-unit",
+            "displayName": "Release unit tests",
+            "configurePreset": "release",
+            "configuration": "Release",
+            "filter": {
+                "include": {
+                    "label": "unit"
+                }
+            },
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "release-component",
+            "displayName": "Release component tests",
+            "configurePreset": "release",
+            "configuration": "Release",
+            "filter": {
+                "include": {
+                    "label": "component"
+                }
+            },
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "release-integration",
+            "displayName": "Release integration tests",
+            "configurePreset": "release",
+            "configuration": "Release",
+            "filter": {
+                "include": {
+                    "label": "integration"
+                }
+            },
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "relwithdebinfo",
+            "displayName": "RelWithDebInfo tests",
+            "configurePreset": "relwithdebinfo",
+            "configuration": "RelWithDebInfo",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "asan",
+            "displayName": "ASan/UBSan tests",
+            "configurePreset": "asan",
+            "configuration": "Debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "wamr-debug",
+            "displayName": "WAMR Debug tests",
+            "configurePreset": "wamr-debug",
+            "configuration": "Debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        }
+    ]
+}

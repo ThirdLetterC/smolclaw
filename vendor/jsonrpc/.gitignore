@@ -1,0 +1,22 @@
+# Zig build outputs
+zig-*/
+.zig-cache/
+
+# Compiled binaries and objects
+*.o
+*.obj
+*.exe
+*.out
+
+# Editor settings
+.vscode/
+*.swp
+
+massif.out.*
+a
+
+tools/bench_rps
+
+_codeql_detected_source_root
+
+*.gcov

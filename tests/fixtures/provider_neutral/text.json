@@ -1,0 +1,10 @@
+{
+  "kind": "text",
+  "request": {
+    "model": "neutral-text",
+    "input": "sample request"
+  },
+  "response": {
+    "text": "sample response"
+  }
+}

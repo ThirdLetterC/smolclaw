@@ -1,0 +1,8 @@
+{
+  "name": "sc-echo-rust-plugin",
+  "version": "1.0.0",
+  "abi_major": 0,
+  "capabilities": ["wasm", "tool"],
+  "requested_permissions": ["tool"],
+  "entry_artifact": "@ARTIFACT_PATH@"
+}

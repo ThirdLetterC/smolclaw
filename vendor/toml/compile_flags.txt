@@ -1,0 +1,13 @@
+-std=c23
+-D_XOPEN_SOURCE=600
+-D_POSIX_C_SOURCE=200112L
+-Wall
+-Wextra
+-Wpedantic
+-Werror
+-Wstrict-prototypes
+-Wwrite-strings
+-Wno-missing-field-initializers
+-fPIC
+-Isrc
+-Iinclude

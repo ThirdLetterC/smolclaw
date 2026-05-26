@@ -1,0 +1,223 @@
+# syntax=docker/dockerfile:1
+
+FROM python:3.11-slim
+
+ARG PIPER_TTS_VERSION=1.4.2
+ARG PIPER_MODEL_URL=https://huggingface.co/csukuangfj/vits-piper-en_US-lessac-medium/resolve/1d280db803c4d27cc5293540347218694097344d/en_US-lessac-medium.onnx
+ARG PIPER_CONFIG_URL=https://huggingface.co/csukuangfj/vits-piper-en_US-lessac-medium/resolve/1d280db803c4d27cc5293540347218694097344d/en_US-lessac-medium.onnx.json
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIPER_HOST=0.0.0.0
+ENV PIPER_PORT=5000
+ENV PIPER_MODEL=/voices/en_US-lessac-medium.onnx
+ENV PIPER_VOICES_DIR=/voices
+ENV PIPER_MAX_TEXT_BYTES=65536
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir --upgrade pip \
+    && python -m pip install --no-cache-dir "piper-tts==${PIPER_TTS_VERSION}" \
+    && useradd --system --create-home --home-dir /var/lib/piper --shell /usr/sbin/nologin piper \
+    && mkdir -p /voices /var/lib/piper \
+    && curl -fL --retry 5 --retry-delay 2 "${PIPER_MODEL_URL}" -o /voices/en_US-lessac-medium.onnx \
+    && curl -fL --retry 5 --retry-delay 2 "${PIPER_CONFIG_URL}" -o /voices/en_US-lessac-medium.onnx.json \
+    && chown -R piper:piper /voices /var/lib/piper
+
+COPY <<'PY' /usr/local/bin/smolclaw_piper_server.py
+#!/usr/bin/env python3
+
+import io
+import json
+import os
+import re
+import sys
+import threading
+import wave
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+
+from piper.config import SynthesisConfig
+from piper.voice import PiperVoice
+
+
+HOST = os.environ.get("PIPER_HOST", "0.0.0.0")
+PORT = int(os.environ.get("PIPER_PORT", "5000"))
+DEFAULT_MODEL = Path(os.environ.get("PIPER_MODEL", "/voices/en_US-lessac-medium.onnx"))
+DEFAULT_CONFIG = os.environ.get("PIPER_CONFIG")
+VOICES_DIR = Path(os.environ.get("PIPER_VOICES_DIR", "/voices"))
+MAX_TEXT_BYTES = int(os.environ.get("PIPER_MAX_TEXT_BYTES", "65536"))
+VOICE_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+_voices: dict[Path, PiperVoice] = {}
+_voices_lock = threading.Lock()
+_synthesis_lock = threading.Lock()
+
+
+def _json_response(handler: BaseHTTPRequestHandler, status: HTTPStatus, payload: dict[str, Any]) -> None:
+    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def _error(handler: BaseHTTPRequestHandler, status: HTTPStatus, message: str) -> None:
+    _json_response(handler, status, {"error": message})
+
+
+def _float_or_none(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _model_for_voice(voice_name: Any) -> tuple[Path, str | None]:
+    if not isinstance(voice_name, str) or not voice_name:
+        return DEFAULT_MODEL, DEFAULT_CONFIG
+    if not VOICE_NAME_RE.fullmatch(voice_name):
+        raise ValueError("voice contains unsupported characters")
+
+    candidate = VOICES_DIR / f"{voice_name}.onnx"
+    if candidate.exists():
+        config = candidate.with_suffix(candidate.suffix + ".json")
+        return candidate, str(config) if config.exists() else None
+
+    return DEFAULT_MODEL, DEFAULT_CONFIG
+
+
+def _load_voice(model_path: Path, config_path: str | None) -> PiperVoice:
+    model_path = model_path.resolve()
+    if not model_path.exists():
+        raise FileNotFoundError(f"Piper model not found: {model_path}")
+
+    with _voices_lock:
+        voice = _voices.get(model_path)
+        if voice is None:
+            voice = PiperVoice.load(model_path, config_path=config_path)
+            _voices[model_path] = voice
+        return voice
+
+
+def _synthesize(payload: dict[str, Any]) -> bytes:
+    text = payload.get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("text is required")
+    if len(text.encode("utf-8")) > MAX_TEXT_BYTES:
+        raise ValueError("text is too large")
+
+    model_path, config_path = _model_for_voice(payload.get("voice"))
+    voice = _load_voice(model_path, config_path)
+    syn_config = SynthesisConfig(
+        speaker_id=_int_or_none(payload.get("speaker_id")),
+        length_scale=_float_or_none(payload.get("length_scale")),
+        noise_scale=_float_or_none(payload.get("noise_scale")),
+        noise_w_scale=_float_or_none(payload.get("noise_w_scale")),
+    )
+
+    with io.BytesIO() as wav_io:
+        with wave.open(wav_io, "wb") as wav_file:
+            first_chunk = True
+            with _synthesis_lock:
+                for chunk in voice.synthesize(text, syn_config=syn_config):
+                    if first_chunk:
+                        wav_file.setframerate(chunk.sample_rate)
+                        wav_file.setsampwidth(chunk.sample_width)
+                        wav_file.setnchannels(chunk.sample_channels)
+                        first_chunk = False
+                    wav_file.writeframes(chunk.audio_int16_bytes)
+        return wav_io.getvalue()
+
+
+class PiperHandler(BaseHTTPRequestHandler):
+    server_version = "smolclaw-piper/0.1"
+
+    def do_GET(self) -> None:
+        if self.path != "/healthz":
+            _error(self, HTTPStatus.NOT_FOUND, "not found")
+            return
+        _json_response(self, HTTPStatus.OK, {"status": "ok"})
+
+    def do_POST(self) -> None:
+        if self.path != "/":
+            _error(self, HTTPStatus.NOT_FOUND, "not found")
+            return
+
+        content_length = self.headers.get("Content-Length")
+        if content_length is None:
+            _error(self, HTTPStatus.LENGTH_REQUIRED, "content-length is required")
+            return
+
+        try:
+            length = int(content_length)
+        except ValueError:
+            _error(self, HTTPStatus.BAD_REQUEST, "invalid content-length")
+            return
+        if length <= 0 or length > MAX_TEXT_BYTES + 4096:
+            _error(self, HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request body is too large")
+            return
+
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("request body must be a JSON object")
+            audio = _synthesize(payload)
+        except FileNotFoundError as exc:
+            _error(self, HTTPStatus.SERVICE_UNAVAILABLE, str(exc))
+            return
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            _error(self, HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        except Exception as exc:
+            print(f"piper synthesis failed: {exc}", file=sys.stderr, flush=True)
+            _error(self, HTTPStatus.INTERNAL_SERVER_ERROR, "synthesis failed")
+            return
+
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Content-Length", str(len(audio)))
+        self.end_headers()
+        self.wfile.write(audio)
+
+    def log_message(self, fmt: str, *args: Any) -> None:
+        print(f"{self.address_string()} - {fmt % args}", file=sys.stderr, flush=True)
+
+
+def main() -> None:
+    try:
+        _load_voice(DEFAULT_MODEL, DEFAULT_CONFIG)
+    except Exception as exc:
+        print(f"failed to load default Piper voice: {exc}", file=sys.stderr, flush=True)
+        raise SystemExit(1) from exc
+
+    server = ThreadingHTTPServer((HOST, PORT), PiperHandler)
+    print(f"smolclaw piper server listening on {HOST}:{PORT}", flush=True)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
+PY
+
+RUN chmod 0755 /usr/local/bin/smolclaw_piper_server.py
+
+USER piper
+WORKDIR /var/lib/piper
+VOLUME ["/voices"]
+EXPOSE 5000
+
+ENTRYPOINT ["/usr/local/bin/smolclaw_piper_server.py"]

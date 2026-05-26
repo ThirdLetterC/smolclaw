@@ -1,0 +1,5 @@
+*.o
+*.html
+test_microjson
+example[1234]
+

@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build release archives
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    env:
+      CC: clang
+      CXX: clang++
+      CTEST_OUTPUT_ON_FAILURE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            clang \
+            cmake \
+            curl \
+            git \
+            libcurl4-openssl-dev \
+            libsodium-dev \
+            libsqlite3-dev \
+            libuv1-dev \
+            ninja-build \
+            pkg-config \
+            python3 \
+            unzip \
+            zip \
+            zlib1g-dev
+
+      - name: Build release targets
+        run: |
+          cmake --preset release
+          cmake --build --preset release-all --parallel "$(nproc)"
+
+      - name: Run release tests
+        run: ctest --preset release --output-on-failure
+
+      - name: Stage release payload
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME}"
+          platform="linux-x86_64"
+          package_name="smolclaw-${version}-${platform}"
+          package_dir="dist/${package_name}"
+
+          rm -rf dist
+          mkdir -p "${package_dir}/bin"
+
+          install -m 0755 build/release/smolclaw "${package_dir}/bin/smolclaw"
+          install -m 0644 README.md "${package_dir}/README.md"
+          install -m 0644 SECURITY.md "${package_dir}/SECURITY.md"
+
+          cp -R docs "${package_dir}/docs"
+          cp -R locales "${package_dir}/locales"
+          cp -R schema "${package_dir}/schema"
+          cp -R examples "${package_dir}/examples"
+
+          tar -C dist -czf "dist/${package_name}.tar.gz" "${package_name}"
+          (cd dist && zip -qr "${package_name}.zip" "${package_name}")
+          (cd dist && sha256sum "${package_name}.tar.gz" "${package_name}.zip" > SHA256SUMS.txt)
+
+          {
+            echo "package_name=${package_name}"
+            echo "tarball=dist/${package_name}.tar.gz"
+            echo "zipball=dist/${package_name}.zip"
+            echo "checksums=dist/SHA256SUMS.txt"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.package.outputs.tarball }}
+            ${{ steps.package.outputs.zipball }}
+            ${{ steps.package.outputs.checksums }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true

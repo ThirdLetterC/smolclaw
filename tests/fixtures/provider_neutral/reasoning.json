@@ -1,0 +1,19 @@
+{
+  "kind": "reasoning",
+  "request": {
+    "model": "neutral-reasoning",
+    "input": "sample reasoning request",
+    "reasoning": {
+      "effort": "low"
+    }
+  },
+  "response": {
+    "text": "sample answer",
+    "reasoning_events": [
+      {
+        "type": "reasoning_delta",
+        "text": "sample reasoning trace"
+      }
+    ]
+  }
+}

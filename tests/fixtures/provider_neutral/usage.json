@@ -1,0 +1,15 @@
+{
+  "kind": "usage",
+  "request": {
+    "model": "neutral-usage",
+    "input": "sample request"
+  },
+  "response": {
+    "text": "sample response",
+    "usage": {
+      "input_tokens": 12,
+      "output_tokens": 8,
+      "total_tokens": 20
+    }
+  }
+}

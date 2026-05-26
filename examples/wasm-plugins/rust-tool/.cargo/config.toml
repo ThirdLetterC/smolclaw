@@ -1,0 +1,11 @@
+[build]
+target = "wasm32-unknown-unknown"
+
+[target.wasm32-unknown-unknown]
+rustflags = [
+    "-C", "link-arg=--export=memory",
+    "-C", "link-arg=--export=sc_plugin_guest_abi_version",
+    "-C", "link-arg=--export=sc_plugin_init",
+    "-C", "link-arg=--export=sc_plugin_shutdown",
+    "-C", "link-arg=--export=sc_echo_rust_invoke",
+]

@@ -1,0 +1,7 @@
+{
+    "clangd.path": "/usr/bin/clangd-22",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}",
+        "--enable-config"
+    ]
+}

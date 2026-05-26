@@ -1,0 +1,946 @@
+fields:
+  - path: schema.version
+    type: int
+    secret: false
+    default: "1"
+    doc: Config schema version.
+  - path: runtime.autonomy_level
+    type: string
+    secret: false
+    default: supervised
+    doc: Default autonomy level for runtime decisions.
+  - path: runtime.workspace_path
+    type: string
+    secret: false
+    default: ""
+    doc: Active workspace path marker.
+  - path: logging.level
+    type: string
+    secret: false
+    default: info
+    doc: Minimum log level, one of trace, debug, info, warn, error, fatal, or off.
+  - path: logging.format
+    type: string
+    secret: false
+    default: console
+    doc: Log output format, one of console or json.
+  - path: logging.daemon.file_enabled
+    type: bool
+    secret: false
+    default: "true"
+    doc: Redirect daemon stdout and stderr to the configured daemon log file.
+  - path: logging.daemon.file_path
+    type: string
+    secret: false
+    default: logs/smolclaw-daemon.log
+    doc: Daemon log file path; relative paths are resolved under the SmolClaw workspace.
+  - path: autonomy.level
+    type: string
+    secret: false
+    default: supervised
+    doc: Security autonomy level, one of read_only, supervised, or full.
+  - path: autonomy.shell_enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable shell and process tools after policy checks.
+  - path: provider.default
+    type: string
+    secret: false
+    default: openai
+    doc: Default provider alias.
+  - path: provider.default_model
+    type: string
+    secret: false
+    default: default
+    doc: Default model route.
+  - path: provider.api_key
+    type: string
+    secret: true
+    default: ""
+    doc: Inline provider API key.
+  - path: provider.api_key_env
+    type: string
+    secret: false
+    default: SMOLCLAW_PROVIDER_API_KEY
+    doc: Environment variable containing the provider credential.
+  - path: providers.models.<name>.kind
+    type: string
+    secret: false
+    default: openai
+    doc: Provider implementation kind for a named model alias.
+  - path: providers.models.<name>.model
+    type: string
+    secret: false
+    default: ""
+    doc: Provider-native model identifier for a named model alias.
+  - path: providers.models.<name>.api_key
+    type: string
+    secret: true
+    default: ""
+    doc: Inline provider credential for a named model alias.
+  - path: providers.models.<name>.credential_env
+    type: string
+    secret: false
+    default: ""
+    doc: Provider-specific environment variable used before generic credential fallbacks.
+  - path: providers.models.<name>.base_url
+    type: string
+    secret: false
+    default: ""
+    doc: Provider endpoint base URL.
+  - path: providers.models.<name>.fallback_providers
+    type: string
+    secret: false
+    default: "[]"
+    doc: Ordered provider aliases used by reliable fallback chains.
+  - path: providers.models.<name>.default
+    type: string
+    secret: false
+    default: ""
+    doc: Default route target for router providers.
+  - path: providers.models.<name>.tool_provider
+    type: string
+    secret: false
+    default: ""
+    doc: Provider alias used when a request contains tool declarations.
+  - path: providers.models.<name>.routes
+    type: string
+    secret: false
+    default: "[]"
+    doc: Router hint-to-provider mappings.
+  - path: providers.models.<name>.think
+    type: bool
+    secret: false
+    default: "true"
+    doc: Provider reasoning toggle for backends that expose native thinking controls.
+  - path: providers.models.<name>.reasoning_effort
+    type: string
+    secret: false
+    default: ""
+    doc: Provider reasoning effort level or disabled reasoning marker.
+  - path: providers.models.<name>.options
+    type: string
+    secret: false
+    default: "{}"
+    doc: Provider-specific generation options object.
+  - path: providers.models.<name>.format
+    type: string
+    secret: false
+    default: ""
+    doc: Provider-specific structured output format descriptor.
+  - path: providers.models.<name>.native_tool_streaming
+    type: bool
+    secret: false
+    default: "false"
+    doc: Preserve provider-native tool-call streaming when the backend supports it.
+  - path: providers.models.<name>.deployment
+    type: string
+    secret: false
+    default: ""
+    doc: Azure OpenAI deployment name.
+  - path: providers.models.<name>.api_version
+    type: string
+    secret: false
+    default: ""
+    doc: Azure OpenAI API version.
+  - path: providers.models.<name>.region
+    type: string
+    secret: false
+    default: ""
+    doc: Cloud provider region, currently used by Bedrock.
+  - path: providers.models.<name>.secret_access_key
+    type: string
+    secret: true
+    default: ""
+    doc: Secret access key for providers that require paired credentials.
+  - path: providers.models.<name>.session_token
+    type: string
+    secret: true
+    default: ""
+    doc: Session token for temporary provider credentials.
+  - path: providers.models.<name>.command
+    type: string
+    secret: false
+    default: ""
+    doc: Local command path for process-backed provider adapters.
+  - path: providers.models.<name>.mcp_server
+    type: string
+    secret: false
+    default: "claude-code"
+    doc: MCP server name used by provider adapters that delegate over MCP.
+  - path: providers.models.<name>.mcp_tool
+    type: string
+    secret: false
+    default: "query"
+    doc: MCP tool name used by provider adapters that delegate over MCP.
+  - path: providers.models.<name>.mcp_prompt_field
+    type: string
+    secret: false
+    default: "prompt"
+    doc: JSON field name used for the delegated provider prompt.
+  - path: providers.models.<name>.allow_loopback
+    type: bool
+    secret: false
+    default: "false"
+    doc: Allow cleartext HTTP only for loopback-local provider endpoints.
+  - path: model.route_default
+    type: string
+    secret: false
+    default: provider.default_model
+    doc: Default model routing target.
+  - path: reliability.max_retries
+    type: int
+    secret: false
+    default: "2"
+    doc: Network retry count for Telegram and AI provider requests.
+  - path: reliability.retry_backoff_ms
+    type: int
+    secret: false
+    default: "250"
+    doc: Base retry backoff in milliseconds.
+  - path: reliability.timeout_ms
+    type: int
+    secret: false
+    default: "30000"
+    doc: Provider timeout in milliseconds.
+  - path: memory.backend
+    type: string
+    secret: false
+    default: none
+    doc: Default memory backend.
+  - path: gateway.bind
+    type: string
+    secret: false
+    default: 127.0.0.1
+    doc: Gateway listen address.
+  - path: gateway.port
+    type: int
+    secret: false
+    default: "8080"
+    doc: Gateway listen port.
+  - path: gateway.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable the gateway service.
+  - path: gateway.listener_enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable the gateway network listener.
+  - path: gateway.public_bind_enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Permit gateway listeners on non-loopback addresses.
+  - path: gateway.max_body_bytes
+    type: int
+    secret: false
+    default: "65536"
+    doc: Maximum gateway request body bytes.
+  - path: gateway.rate_limit
+    type: int
+    secret: false
+    default: "60"
+    doc: Gateway request rate limit per window.
+  - path: gateway.timeout_ms
+    type: int
+    secret: false
+    default: "30000"
+    doc: Gateway request timeout in milliseconds.
+  - path: gateway.auth_token
+    type: string
+    secret: true
+    default: ""
+    doc: Shared bearer token required for gateway access when set.
+  - path: gateway.pairing_code
+    type: string
+    secret: true
+    default: ""
+    doc: Local pairing code required for privileged gateway routes when set.
+  - path: gateway.observe
+    type: bool
+    secret: false
+    default: "true"
+    doc: Register gateway events with the runtime observer.
+  - path: proxy.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable outbound proxy matching.
+  - path: proxy.default_url
+    type: string
+    secret: false
+    default: ""
+    doc: Default proxy URL.
+  - path: autonomy.auto_approve
+    type: string
+    secret: false
+    default: "[]"
+    doc: Tool names approved without an interactive prompt.
+  - path: autonomy.always_ask
+    type: string
+    secret: false
+    default: "[]"
+    doc: Tool names that always require approval.
+  - path: autonomy.never_allow
+    type: string
+    secret: false
+    default: "[]"
+    doc: Tool names that are always denied.
+  - path: autonomy.workspace_only
+    type: bool
+    secret: false
+    default: "true"
+    doc: Restrict filesystem tools to the configured workspace.
+  - path: autonomy.forbidden_paths
+    type: string
+    secret: false
+    default: ["/etc","/sys","/boot","~/.ssh","~/.aws"]
+    doc: Paths denied regardless of workspace policy.
+  - path: autonomy.allowed_commands
+    type: string
+    secret: false
+    default: "[]"
+    doc: Shell command basenames that may run when non-empty.
+  - path: autonomy.forbidden_commands
+    type: string
+    secret: false
+    default: ["shutdown","reboot","mkfs"]
+    doc: Shell command basenames that are denied.
+  - path: autonomy.shell_env_passthrough
+    type: string
+    secret: false
+    default: ["PATH","HOME","USER","LANG"]
+    doc: Environment variables passed to shell tools.
+  - path: security.otp.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Require an OTP code for configured high-risk tool actions.
+  - path: security.otp.actions
+    type: string
+    secret: false
+    default: ["shell","browser","browser_screenshot","file_write"]
+    doc: Tool names that require OTP when OTP gating is enabled.
+  - path: security.otp.code
+    type: string
+    secret: true
+    default: ""
+    doc: Static OTP code used by the local C runtime gate.
+  - path: security.sandbox.backend
+    type: string
+    secret: false
+    default: auto
+    doc: Sandbox backend selection.
+  - path: security.sandbox.network
+    type: string
+    secret: false
+    default: full
+    doc: Sandbox network policy.
+  - path: security.sandbox.container_runtime
+    type: string
+    secret: false
+    default: ""
+    doc: Path to a Docker-compatible container runtime used when sandbox backend is container.
+  - path: security.sandbox.docker_path
+    type: string
+    secret: false
+    default: ""
+    doc: Path to the Docker-compatible docker binary override.
+  - path: security.sandbox.podman_path
+    type: string
+    secret: false
+    default: ""
+    doc: Path to the Docker-compatible podman binary override.
+  - path: security.sandbox.image_name
+    type: string
+    secret: false
+    default: alpine:3.23.4
+    doc: Container image used for commands run inside a container sandbox.
+  - path: security.sandbox.fallback_order
+    type: string
+    secret: false
+    default: ["landlock","bubblewrap","firejail","docker","podman"]
+    doc: JSON array of sandbox backends tried when backend is auto.
+  - path: security.sandbox.allow_noop_fallback
+    type: bool
+    secret: false
+    default: "false"
+    doc: Allow auto sandbox selection to fall back to the noop sandbox when no real backend is available.
+  - path: security.sandbox.allowed_domains
+    type: string
+    secret: false
+    default: "[]"
+    doc: Domains reachable when sandbox network policy is allowed-domains.
+  - path: security.sandbox.memory_limit_mb
+    type: int
+    secret: false
+    default: "0"
+    doc: Sandbox memory cap in MiB, or zero for unset.
+  - path: security.sandbox.max_subprocesses
+    type: int
+    secret: false
+    default: "0"
+    doc: Sandbox subprocess cap, or zero for unset.
+  - path: security.sandbox.allow_devices
+    type: string
+    secret: false
+    default: "[]"
+    doc: Device paths allowed for hardware tools.
+  - path: agent.tool_receipts.enabled
+    type: bool
+    secret: false
+    default: "true"
+    doc: Enable HMAC receipts for tool calls.
+  - path: agent.tool_receipts.show_in_response
+    type: bool
+    secret: false
+    default: "false"
+    doc: Append receipt summaries to user-visible responses.
+  - path: agent.tool_receipts.inject_system_prompt
+    type: bool
+    secret: false
+    default: "true"
+    doc: Remind the model to keep receipt tokens out of user-visible responses.
+  - path: agent.max_history_messages
+    type: int
+    secret: false
+    default: "50"
+    doc: Maximum conversation history messages kept in each agent turn.
+  - path: agent.consecutive_message_limit
+    type: int
+    secret: false
+    default: "5"
+    doc: Maximum consecutive user messages batched when interrupting an active turn.
+  - path: agent.max_tool_iterations
+    type: int
+    secret: false
+    default: "10"
+    doc: Maximum tool-call iterations allowed for one agent turn.
+  - path: agent.max_tool_result_chars
+    type: int
+    secret: false
+    default: "50000"
+    doc: Maximum tool result characters included in model context.
+  - path: agent.max_system_prompt_chars
+    type: int
+    secret: false
+    default: "0"
+    doc: Maximum assembled system prompt characters, or zero for unset.
+  - path: tools.http.max_body_bytes
+    type: int
+    secret: false
+    default: "50000"
+    doc: Maximum HTTP tool response body bytes.
+  - path: tools.rtk.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable RTK compression for eligible shell tool command output.
+  - path: tools.rtk.command
+    type: string
+    secret: false
+    default: rtk
+    doc: RTK executable path or PATH-resolved command name.
+  - path: tools.rtk.ultra_compact
+    type: bool
+    secret: false
+    default: "true"
+    doc: Pass RTK ultra-compact output mode when wrapping shell commands.
+  - path: tools.rtk.fallback_passthrough
+    type: bool
+    secret: false
+    default: "true"
+    doc: Run the original shell command when RTK is enabled but unavailable.
+  - path: tools.rtk.allowed_commands
+    type: string
+    secret: false
+    default: ["ls","tree","cat","head","tail","rg","grep","find","git","gh","pytest","cargo","go","npm","pnpm","yarn","docker","kubectl","curl","wget"]
+    doc: Shell command basenames eligible for RTK output compression.
+  - path: media.asr.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable audio transcription for inbound channel media.
+  - path: media.asr.backend
+    type: string
+    secret: false
+    default: whisper_cpp
+    doc: ASR backend name.
+  - path: media.asr.whisper.endpoint_url
+    type: string
+    secret: false
+    default: http://127.0.0.1:2022/v1/audio/transcriptions
+    doc: whisper.cpp OpenAI-compatible transcription endpoint URL.
+  - path: media.asr.whisper.model
+    type: string
+    secret: false
+    default: whisper-1
+    doc: Multipart model field sent for OpenAI compatibility.
+  - path: media.asr.whisper.language
+    type: string
+    secret: false
+    default: ""
+    doc: Optional transcription language hint.
+  - path: media.asr.whisper.prompt
+    type: string
+    secret: false
+    default: ""
+    doc: Optional transcription prompt.
+  - path: media.asr.whisper.temperature
+    type: string
+    secret: false
+    default: ""
+    doc: Optional transcription temperature.
+  - path: media.asr.whisper.temperature_inc
+    type: string
+    secret: false
+    default: ""
+    doc: Optional whisper.cpp fallback temperature increment.
+  - path: media.asr.whisper.response_format
+    type: string
+    secret: false
+    default: json
+    doc: whisper.cpp response format, usually json.
+  - path: media.asr.whisper.timeout_ms
+    type: int
+    secret: false
+    default: "30000"
+    doc: whisper.cpp transcription timeout in milliseconds.
+  - path: media.asr.whisper.max_audio_bytes
+    type: int
+    secret: false
+    default: "26214400"
+    doc: Maximum inbound audio bytes uploaded for ASR.
+  - path: media.asr.whisper.max_response_bytes
+    type: int
+    secret: false
+    default: "65536"
+    doc: Maximum whisper.cpp transcription response bytes.
+  - path: media.tts.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable synthesized audio replies.
+  - path: media.tts.backend
+    type: string
+    secret: false
+    default: piper
+    doc: TTS backend name.
+  - path: media.tts.reply_mode
+    type: string
+    secret: false
+    default: text_and_audio
+    doc: Audio reply delivery mode.
+  - path: media.tts.piper.base_url
+    type: string
+    secret: false
+    default: http://127.0.0.1:5000
+    doc: Piper HTTP server base URL.
+  - path: media.tts.piper.voice
+    type: string
+    secret: false
+    default: ""
+    doc: Piper voice name override.
+  - path: media.tts.piper.speaker
+    type: string
+    secret: false
+    default: ""
+    doc: Piper multi-speaker voice speaker name.
+  - path: media.tts.piper.speaker_id
+    type: int
+    secret: false
+    default: "-1"
+    doc: Piper multi-speaker voice speaker id, or -1 when unset.
+  - path: media.tts.piper.length_scale
+    type: string
+    secret: false
+    default: ""
+    doc: Piper speaking speed scale.
+  - path: media.tts.piper.noise_scale
+    type: string
+    secret: false
+    default: ""
+    doc: Piper speaking variability scale.
+  - path: media.tts.piper.noise_w_scale
+    type: string
+    secret: false
+    default: ""
+    doc: Piper phoneme width variability scale.
+  - path: media.tts.piper.timeout_ms
+    type: int
+    secret: false
+    default: "30000"
+    doc: Piper synthesis timeout in milliseconds.
+  - path: media.tts.piper.max_audio_bytes
+    type: int
+    secret: false
+    default: "8388608"
+    doc: Maximum Piper WAV response bytes.
+  - path: tools.web_search.provider
+    type: string
+    secret: false
+    default: none
+    doc: Web search provider.
+  - path: tools.web_search.max_response_bytes
+    type: int
+    secret: false
+    default: "50000"
+    doc: Maximum web search response body bytes.
+  - path: tools.web_search.brave_api_key_env
+    type: string
+    secret: false
+    default: BRAVE_SEARCH_API_KEY
+    doc: Environment variable for Brave Search API key.
+  - path: tools.web_search.serper_api_key_env
+    type: string
+    secret: false
+    default: SERPER_API_KEY
+    doc: Environment variable for Serper API key.
+  - path: tools.web_search.google_api_key_env
+    type: string
+    secret: false
+    default: GOOGLE_CSE_API_KEY
+    doc: Environment variable for Google CSE API key.
+  - path: tools.web_search.google_cse_id_env
+    type: string
+    secret: false
+    default: GOOGLE_CSE_ID
+    doc: Environment variable for Google CSE search engine id.
+  - path: browser.enabled
+    type: bool
+    secret: false
+    default: "true"
+    doc: Enable the Lightpanda CDP backed browser tool.
+  - path: browser.allowed_domains
+    type: string
+    secret: false
+    default: "[\"*\"]"
+    doc: Browser-specific allowed domains.
+  - path: browser.lightpanda.cdp_url
+    type: string
+    secret: false
+    default: ws://127.0.0.1:9222
+    doc: Local Lightpanda CDP WebSocket endpoint.
+  - path: browser.lightpanda.version_url
+    type: string
+    secret: false
+    default: http://127.0.0.1:9222/json/version
+    doc: Local Lightpanda version probe endpoint.
+  - path: browser.lightpanda.require_loopback
+    type: bool
+    secret: false
+    default: "true"
+    doc: Require Lightpanda CDP endpoints to use loopback hosts.
+  - path: browser.lightpanda.command_timeout_ms
+    type: int
+    secret: false
+    default: "5000"
+    doc: Per-command Lightpanda CDP timeout in milliseconds.
+  - path: browser.lightpanda.navigation_timeout_ms
+    type: int
+    secret: false
+    default: "30000"
+    doc: Lightpanda navigation timeout in milliseconds.
+  - path: browser.lightpanda.max_message_bytes
+    type: int
+    secret: false
+    default: "1048576"
+    doc: Maximum Lightpanda CDP WebSocket message bytes.
+  - path: browser.screenshot.max_bytes
+    type: int
+    secret: false
+    default: "4194304"
+    doc: Maximum decoded browser screenshot bytes.
+  - path: hardware.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable hardware tools when the binary was compiled with hardware support.
+  - path: sop.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Expose SOP inspection and advancement tools.
+  - path: sop.path
+    type: string
+    secret: false
+    default: ""
+    doc: Default SOP markdown path inside the workspace.
+  - path: cron.tools_enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Expose cron listing and mutation tools without enabling a config cron job.
+  - path: cron.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable the configured cron job runner.
+  - path: cron.id
+    type: string
+    secret: false
+    default: config-cron
+    doc: Identifier for the configured cron job.
+  - path: cron.schedule
+    type: string
+    secret: false
+    default: ""
+    doc: Cron schedule for the configured job.
+  - path: cron.prompt
+    type: string
+    secret: false
+    default: ""
+    doc: Prompt executed by the configured cron job.
+  - path: cron.delivery_target
+    type: string
+    secret: false
+    default: default
+    doc: Delivery target for configured cron job output.
+  - path: cron.once
+    type: bool
+    secret: false
+    default: "false"
+    doc: Run the configured cron job once and disable it.
+  - path: tool_filter_groups
+    type: string
+    secret: false
+    default: "[]"
+    doc: Tool exposure filter groups.
+  - path: mcp.deferred_loading
+    type: bool
+    secret: false
+    default: "true"
+    doc: Load MCP tool schemas on demand instead of at startup.
+  - path: heartbeat.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable workspace heartbeat state tracking.
+  - path: heartbeat.state_path
+    type: string
+    secret: false
+    default: heartbeat.state
+    doc: Heartbeat state file path, relative to the workspace when not absolute.
+  - path: channels.session_persistence
+    type: bool
+    secret: false
+    default: "true"
+    doc: Persist channel sessions across runtime restarts.
+  - path: channels.session_backend
+    type: string
+    secret: false
+    default: sqlite
+    doc: Channel session storage backend.
+  - path: channels.ack_reactions
+    type: bool
+    secret: false
+    default: "false"
+    doc: Send channel acknowledgement reactions when supported.
+  - path: channels.show_tool_calls
+    type: bool
+    secret: false
+    default: "false"
+    doc: Show tool-call progress in channel messages.
+  - path: channels.max_seen_message_ids
+    type: int
+    secret: false
+    default: "1024"
+    doc: Maximum recently seen channel message ids retained for deduplication.
+  - path: channels.<name>.tools_allow
+    type: string
+    secret: false
+    default: "[]"
+    doc: Channel-specific tool allow-list.
+  - path: channels.<name>.tools_deny
+    type: string
+    secret: false
+    default: "[]"
+    doc: Channel-specific tool deny-list.
+  - path: channels.<name>.autonomy_level
+    type: string
+    secret: false
+    default: ""
+    doc: Channel-specific autonomy override.
+  - path: channels.telegram.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable the Telegram channel.
+  - path: channels.telegram.bot_token_env
+    type: string
+    secret: false
+    default: SMOLCLAW_TELEGRAM_BOT_TOKEN
+    doc: Environment variable containing the Telegram bot token.
+  - path: channels.telegram.bot_token
+    type: string
+    secret: true
+    default: ""
+    doc: Inline Telegram bot token.
+  - path: channels.telegram.allowed_users
+    type: string
+    secret: false
+    default: "[]"
+    doc: Telegram usernames or sender ids allowed to interact with the agent.
+  - path: channels.telegram.mention_only
+    type: bool
+    secret: false
+    default: "false"
+    doc: In Telegram groups, only respond when the bot is mentioned; private chats from allowed users still pass through.
+  - path: channels.telegram.interrupt_on_new_message
+    type: bool
+    secret: false
+    default: "false"
+    doc: Interrupt the active run when a new Telegram message arrives.
+  - path: channels.telegram.post_reactions
+    type: bool
+    secret: false
+    default: "false"
+    doc: React to Telegram channel posts when acknowledgement reactions are enabled.
+  - path: channels.telegram.stream_mode
+    type: string
+    secret: false
+    default: off
+    doc: Telegram streaming mode.
+  - path: channels.telegram.approval_timeout_secs
+    type: int
+    secret: false
+    default: "120"
+    doc: Telegram approval prompt timeout in seconds.
+  - path: channels.telegram.draft_update_interval_ms
+    type: int
+    secret: false
+    default: "1000"
+    doc: Telegram draft message update interval in milliseconds.
+  - path: channels.telegram.poll_timeout_seconds
+    type: int
+    secret: false
+    default: "30"
+    doc: Telegram long-poll timeout in seconds.
+  - path: channels.telegram.message_split_bytes
+    type: int
+    secret: false
+    default: "3900"
+    doc: Maximum Telegram message chunk bytes before splitting.
+  - path: channels.webhook.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable the libuv-backed webhook channel.
+  - path: channels.webhook.bind
+    type: string
+    secret: false
+    default: 127.0.0.1
+    doc: Webhook channel listen address.
+  - path: channels.webhook.port
+    type: int
+    secret: false
+    default: "8081"
+    doc: Webhook channel listen port.
+  - path: channels.webhook.path
+    type: string
+    secret: false
+    default: /webhook/smolclaw
+    doc: Webhook channel request path.
+  - path: channels.webhook.auth_token
+    type: string
+    secret: true
+    default: ""
+    doc: Shared token required for webhook ingestion.
+  - path: channels.webhook.max_body_bytes
+    type: int
+    secret: false
+    default: "65536"
+    doc: Maximum accepted webhook body size.
+  - path: channels.webhook.allowed_ips
+    type: string
+    secret: false
+    default: "[]"
+    doc: Source IP allow-list for webhook ingestion.
+  - path: channels.rabbitmq.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable the RabbitMQ channel.
+  - path: channels.rabbitmq.url
+    type: string
+    secret: true
+    default: ""
+    doc: RabbitMQ AMQP connection URL.
+  - path: channels.rabbitmq.exchange
+    type: string
+    secret: false
+    default: ""
+    doc: RabbitMQ exchange for outbound messages.
+  - path: channels.rabbitmq.routing_key
+    type: string
+    secret: false
+    default: smolclaw.inbound
+    doc: RabbitMQ routing key for outbound messages.
+  - path: channels.rabbitmq.queue
+    type: string
+    secret: false
+    default: smolclaw
+    doc: RabbitMQ queue consumed for inbound messages.
+  - path: channels.rabbitmq.consumer_tag
+    type: string
+    secret: false
+    default: smolclaw-c
+    doc: RabbitMQ consumer tag.
+  - path: channels.rabbitmq.prefetch
+    type: int
+    secret: false
+    default: "1"
+    doc: RabbitMQ consumer prefetch count.
+  - path: channels.rabbitmq.durable
+    type: bool
+    secret: false
+    default: "true"
+    doc: Declare RabbitMQ channel resources as durable.
+  - path: channels.mail.enabled
+    type: bool
+    secret: false
+    default: "false"
+    doc: Enable the libcurl-backed mail channel.
+  - path: channels.mail.inbox_url
+    type: string
+    secret: true
+    default: ""
+    doc: POP3 or IMAP URL for the configured inbox.
+  - path: channels.mail.smtp_url
+    type: string
+    secret: false
+    default: ""
+    doc: SMTP URL used to send channel replies.
+  - path: channels.mail.username
+    type: string
+    secret: true
+    default: ""
+    doc: Mail account username.
+  - path: channels.mail.password
+    type: string
+    secret: true
+    default: ""
+    doc: Mail account password or app token.
+  - path: channels.mail.from
+    type: string
+    secret: false
+    default: ""
+    doc: Mail sender address for replies.
+  - path: channels.mail.to
+    type: string
+    secret: false
+    default: ""
+    doc: Default recipient address for replies.
+  - path: channels.mail.max_message_bytes
+    type: int
+    secret: false
+    default: "1048576"
+    doc: Maximum mail message body accepted from the inbox.
+  - path: channels.mail.delete_after_read
+    type: bool
+    secret: false
+    default: "false"
+    doc: Delete inbox messages after successful read where protocol support exists.

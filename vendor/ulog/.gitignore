@@ -1,0 +1,28 @@
+# IDE files
+.vscode/
+
+# Build artifacts
+build
+install
+subprojects
+
+# Logs and dump files
+*.stackdump
+example.log
+
+# Tests
+build_tests
+
+.zig-cache
+.zig-global-cache
+zig-out
+
+ulog_all_features.log
+
+ulog_all_features
+ulog_example
+ulog_all_features_dbg
+ulog_example_dbg
+ulog_tests_dbg
+
+*.o

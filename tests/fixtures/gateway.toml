@@ -1,0 +1,14 @@
+schema_version = 2
+
+[providers]
+fallback = "mock"
+
+[providers.models.mock]
+model = "mock"
+
+[memory]
+backend = "none"
+
+[gateway]
+bind = "127.0.0.1"
+port = 18080

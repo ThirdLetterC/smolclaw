@@ -1,0 +1,23 @@
+Arena Allocator - Attribution and Modification Notice
+
+This repository includes derivative work based on the original
+"Arena Allocator" project by Carter Dugan.
+
+Original copyright:
+Copyright 2024 Carter Dugan
+
+The original and derivative work are distributed under the Apache License,
+Version 2.0. See LICENSE for the full license text.
+
+Modifications in this repository include, but are not limited to:
+- Migrating project constraints and implementation usage from a C89 baseline
+  to a C23 baseline.
+- Updating interfaces, implementation details, build configuration, tests,
+  and examples to reflect C23-targeted behavior.
+- Adding repository-level attribution and compliance documentation.
+
+Copyright for modifications:
+Copyright 2026 ThirdLetterC contributors
+
+This NOTICE file is provided for attribution purposes and does not modify
+the Apache License, Version 2.0.

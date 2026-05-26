@@ -1,0 +1,9 @@
+.vscode/
+bin/
+build/
+.idea/
+zig-cache/
+zig-out/
+.DS_Store
+.zig-cache
+*.o

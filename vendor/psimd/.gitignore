@@ -1,0 +1,20 @@
+# Build artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Local build directories
+build/
+cmake-build-*/
+
+# Local test executable
+/test
+
+# Editor and OS files
+.DS_Store
+*.swp
+*~

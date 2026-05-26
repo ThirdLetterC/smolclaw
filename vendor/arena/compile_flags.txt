@@ -1,0 +1,11 @@
+-std=c2x
+-Wall
+-Wextra
+-Wpedantic
+-Werror
+-fstack-protector-strong
+-D_FORTIFY_SOURCE=3
+-fPIE
+-Og
+-g
+-Iinclude

@@ -1,0 +1,78 @@
+name: Lint
+
+on:
+  pull_request:
+    paths:
+      - "**/*.c"
+      - "**/*.h"
+      - "**/*.cpp"
+      - "**/*.hpp"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "cmake/**"
+      - "tests/**"
+      - "tools/**"
+      - ".github/workflows/lint.yml"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "**/*.c"
+      - "**/*.h"
+      - "**/*.cpp"
+      - "**/*.hpp"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "cmake/**"
+      - "tests/**"
+      - "tools/**"
+      - ".github/workflows/lint.yml"
+
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Static analysis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    env:
+      CC: clang
+      CXX: clang++
+      SC_CLANG_TIDY_REQUIRED: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: tools/uv.lock
+
+      - name: Install lint dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            clang-tidy \
+            cmake \
+            cppcheck \
+            git \
+            libcurl4-openssl-dev \
+            libsodium-dev \
+            libsqlite3-dev \
+            libuv1-dev \
+            pkg-config \
+            zlib1g-dev
+
+      - name: Run Ruff
+        run: uv run --project tools --locked ruff check tools
+
+      - name: Run C static analysis
+        run: SC_STATIC_SKIP_RUFF=1 make static PYTHON="uv run --project tools --locked python"

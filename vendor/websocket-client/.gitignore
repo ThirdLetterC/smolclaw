@@ -1,0 +1,32 @@
+# Zig build artifacts
+.zig-cache/
+zig-out/
+
+# C/C++ build outputs
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+
+# Tooling outputs
+compile_commands.json
+
+# Crash dumps
+core
+core.*
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+.zig-global-cache/
+
+_codeql_detected_source_root/
+
+coverage

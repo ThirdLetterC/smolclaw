@@ -1,0 +1,37 @@
+// *************************************************************************
+// microlog extension: CMSIS-RTOS2 mutex lock helper (implementation)
+// *************************************************************************
+
+#include "ulog_lock_cmsis.h"
+#include "cmsis_os2.h"
+
+/** @brief Internal CMSIS-RTOS2 mutex adapter. */
+static ulog_status cmsis_lock_fn(bool lock, void *arg) {
+    auto id = (osMutexId_t)arg;
+    if (id == nullptr) {
+        return ULOG_STATUS_INVALID_ARGUMENT;
+    }
+    osStatus_t st;
+    if (lock) {
+        st = osMutexAcquire(id, osWaitForever);
+    } else {
+        st = osMutexRelease(id);
+    }
+    if (st != osOK) {
+        return ULOG_STATUS_ERROR;
+    }
+    return ULOG_STATUS_OK;
+}
+
+/** @copydoc ulog_lock_cmsis_enable */
+ulog_status ulog_lock_cmsis_enable(osMutexId_t mutex_id) {
+    if (mutex_id == nullptr) {
+        return ULOG_STATUS_INVALID_ARGUMENT;
+    }
+    return ulog_lock_set_fn(cmsis_lock_fn, (void *)mutex_id);
+}
+
+/** @copydoc ulog_lock_cmsis_disable */
+ulog_status ulog_lock_cmsis_disable() {
+    return ulog_lock_set_fn(nullptr, nullptr);
+}

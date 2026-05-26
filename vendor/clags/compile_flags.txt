@@ -1,0 +1,10 @@
+-xc
+-std=c23
+-Wall
+-Wextra
+-Wpedantic
+-Werror
+-fstack-protector-strong
+-D_FORTIFY_SOURCE=3
+-fPIE
+-Iinclude

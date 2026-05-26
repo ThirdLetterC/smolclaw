@@ -1,0 +1,6 @@
+#define ARENA_IMPLEMENTATION
+#define ARENA_DEBUG
+#define ARENA_SECURE_WIPE_ON_CLEAR
+#define ARENA_SECURE_WIPE_ON_DESTROY
+
+#include "arena/arena.h"

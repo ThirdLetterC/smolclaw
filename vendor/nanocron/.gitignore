@@ -1,0 +1,42 @@
+# Zig build outputs
+.zig-cache/
+zig-out/
+
+# Project build artifacts
+testing/tests
+testing/tests.exe
+
+# Native compilation/link artifacts
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.lib
+*.exe
+*.pdb
+
+# Coverage and profiling outputs
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+
+# Crash dumps
+core
+core.*
+vgcore.*
+*.stackdump
+
+# Tooling/editor local files
+compile_commands.json
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+examples/simple

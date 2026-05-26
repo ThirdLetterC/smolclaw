@@ -1,0 +1,33 @@
+{
+  "kind": "tools",
+  "request": {
+    "model": "neutral-tools",
+    "input": "sample request",
+    "tools": [
+      {
+        "name": "lookup_status",
+        "description": "Look up a sample status.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": ["id"]
+        }
+      }
+    ]
+  },
+  "response": {
+    "tool_calls": [
+      {
+        "id": "call_0001",
+        "name": "lookup_status",
+        "arguments": {
+          "id": "sample"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,102 @@
+# syntax=docker/dockerfile:1
+
+FROM ubuntu:24.04 AS build
+
+ARG WHISPER_CPP_REF=v1.8.4
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        git \
+        libavcodec-dev \
+        libavformat-dev \
+        libavutil-dev \
+        pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+RUN git clone --depth 1 --branch "${WHISPER_CPP_REF}" https://github.com/ggml-org/whisper.cpp.git whisper.cpp
+
+RUN cmake -S /src/whisper.cpp -B /tmp/whisper-build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DGGML_NATIVE=OFF \
+        -DWHISPER_FFMPEG=ON \
+    && cmake --build /tmp/whisper-build --config Release --target whisper-server -j"$(nproc)" \
+    && install -D -m 0755 /tmp/whisper-build/bin/whisper-server /out/bin/whisper-server \
+    && mkdir -p /out/lib \
+    && cp -a /tmp/whisper-build/src/libwhisper.so* /out/lib/ \
+    && cp -a /tmp/whisper-build/ggml/src/libggml*.so* /out/lib/
+
+FROM ubuntu:24.04 AS runtime
+
+ARG WHISPER_MODEL_URL=https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV WHISPER_HOST=0.0.0.0
+ENV WHISPER_PORT=2022
+ENV WHISPER_MODEL=/models/ggml-base.bin
+ENV WHISPER_THREADS=4
+ENV WHISPER_PROCESSORS=1
+ENV WHISPER_INFERENCE_PATH=/v1/audio/transcriptions
+ENV WHISPER_TMPDIR=/tmp/whisper
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        ffmpeg \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --create-home --home-dir /var/lib/whisper --shell /usr/sbin/nologin whisper \
+    && mkdir -p /models /var/lib/whisper /tmp/whisper \
+    && curl -fL --retry 5 --retry-delay 2 "${WHISPER_MODEL_URL}" -o /models/ggml-base.bin \
+    && chown -R whisper:whisper /models /var/lib/whisper /tmp/whisper
+
+COPY --from=build /out/bin/whisper-server /usr/local/bin/whisper-server
+COPY --from=build /out/lib/ /usr/local/lib/
+
+RUN ldconfig
+
+COPY <<'SH' /usr/local/bin/smolclaw_whisper_entrypoint.sh
+#!/bin/sh
+set -eu
+
+: "${WHISPER_HOST:=0.0.0.0}"
+: "${WHISPER_PORT:=2022}"
+: "${WHISPER_MODEL:=/models/ggml-base.bin}"
+: "${WHISPER_THREADS:=4}"
+: "${WHISPER_PROCESSORS:=1}"
+: "${WHISPER_INFERENCE_PATH:=/v1/audio/transcriptions}"
+: "${WHISPER_TMPDIR:=/tmp/whisper}"
+
+if [ ! -f "${WHISPER_MODEL}" ]; then
+    echo "whisper model not found: ${WHISPER_MODEL}" >&2
+    exit 64
+fi
+
+exec /usr/local/bin/whisper-server \
+    --host "${WHISPER_HOST}" \
+    --port "${WHISPER_PORT}" \
+    --model "${WHISPER_MODEL}" \
+    --threads "${WHISPER_THREADS}" \
+    --processors "${WHISPER_PROCESSORS}" \
+    --inference-path "${WHISPER_INFERENCE_PATH}" \
+    --convert \
+    --tmp-dir "${WHISPER_TMPDIR}" \
+    --no-gpu \
+    "$@"
+SH
+
+RUN chmod 0755 /usr/local/bin/smolclaw_whisper_entrypoint.sh
+
+USER whisper
+WORKDIR /var/lib/whisper
+VOLUME ["/models"]
+EXPOSE 2022
+
+ENTRYPOINT ["/usr/local/bin/smolclaw_whisper_entrypoint.sh"]

@@ -1,0 +1,16 @@
+{
+  "kind": "media",
+  "request": {
+    "model": "neutral-media",
+    "input": "describe the attached sample",
+    "media": [
+      {
+        "mime_type": "image/png",
+        "data": "fixture-image-redacted"
+      }
+    ]
+  },
+  "response": {
+    "text": "sample media response"
+  }
+}

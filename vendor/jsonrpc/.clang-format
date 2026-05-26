@@ -1,0 +1,7 @@
+---
+Language: Cpp
+Standard: Latest
+SpaceBeforeParens: ControlStatements
+# Recognizes C23 attributes like [[deprecated]] or [[maybe_unused]]
+AttributeMacros: ['[[.*]]'] 
+---

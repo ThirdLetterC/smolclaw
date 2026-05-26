@@ -1,0 +1,370 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SmolClaw bootstrap config",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "integer", "default": 1 }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "autonomy_level": { "type": "string", "default": "supervised" },
+        "workspace_path": { "type": "string", "default": "" }
+      }
+    },
+    "autonomy": {
+      "type": "object",
+      "properties": {
+        "level": { "type": "string", "default": "supervised" },
+        "shell_enabled": { "type": "boolean", "default": false },
+        "auto_approve": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "always_ask": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "never_allow": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "workspace_only": { "type": "boolean", "default": true },
+        "forbidden_paths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["/etc", "/sys", "/boot", "~/.ssh", "~/.aws"]
+        },
+        "allowed_commands": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "forbidden_commands": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["shutdown", "reboot", "mkfs"]
+        },
+        "shell_env_passthrough": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["PATH", "HOME", "USER", "LANG"]
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "properties": {
+        "default": { "type": "string", "default": "openai" },
+        "default_model": { "type": "string", "default": "default" },
+        "api_key": { "type": "string", "default": "", "x-secret": true },
+        "api_key_env": { "type": "string", "default": "SMOLCLAW_PROVIDER_API_KEY" }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "properties": {
+        "fallback": { "type": "string" },
+        "models": {
+          "type": "object",
+          "patternProperties": {
+            "^[A-Za-z0-9_.-]+$": {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "default": "openai" },
+                "model": { "type": "string", "default": "" },
+                "api_key": { "type": "string", "default": "", "x-secret": true },
+                "credential_env": { "type": "string", "default": "" },
+                "base_url": { "type": "string", "default": "" },
+                "fallback_providers": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "default": []
+                },
+                "default": { "type": "string", "default": "" },
+                "tool_provider": { "type": "string", "default": "" },
+                "routes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "hint": { "type": "string" },
+                      "provider": { "type": "string" }
+                    },
+                    "required": ["hint", "provider"]
+                  },
+                  "default": []
+                },
+                "think": { "type": "boolean", "default": true },
+                "reasoning_effort": { "type": "string", "default": "" },
+                "options": { "type": "object", "default": {} },
+                "format": {},
+                "native_tool_streaming": { "type": "boolean", "default": false },
+                "deployment": { "type": "string", "default": "" },
+                "api_version": { "type": "string", "default": "" },
+                "region": { "type": "string", "default": "" },
+                "secret_access_key": { "type": "string", "default": "", "x-secret": true },
+                "session_token": { "type": "string", "default": "", "x-secret": true },
+                "command": { "type": "string", "default": "" },
+                "mcp_server": { "type": "string", "default": "claude-code" },
+                "mcp_tool": { "type": "string", "default": "query" },
+                "mcp_prompt_field": { "type": "string", "default": "prompt" },
+                "allow_loopback": { "type": "boolean", "default": false }
+              },
+              "required": ["kind"],
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "properties": {
+        "route_default": { "type": "string", "default": "provider.default_model" }
+      }
+    },
+    "reliability": {
+      "type": "object",
+      "properties": {
+        "max_retries": { "type": "integer", "default": 2 },
+        "retry_backoff_ms": { "type": "integer", "default": 250 },
+        "timeout_ms": { "type": "integer", "default": 30000 }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "backend": { "type": "string", "default": "none" }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "properties": {
+        "bind": { "type": "string", "default": "127.0.0.1" },
+        "port": { "type": "integer", "default": 8080 },
+        "enabled": { "type": "boolean", "default": false },
+        "listener_enabled": { "type": "boolean", "default": false },
+        "public_bind_enabled": { "type": "boolean", "default": false },
+        "max_body_bytes": { "type": "integer", "default": 65536 },
+        "rate_limit": { "type": "integer", "default": 60 },
+        "timeout_ms": { "type": "integer", "default": 30000 },
+        "auth_token": { "type": "string", "default": "", "x-secret": true },
+        "pairing_code": { "type": "string", "default": "", "x-secret": true },
+        "observe": { "type": "boolean", "default": true }
+      }
+    },
+    "proxy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "default_url": { "type": "string", "default": "" }
+      }
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "otp": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "actions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": ["shell", "browser", "file_write"]
+            },
+            "code": { "type": "string", "default": "", "x-secret": true }
+          }
+        },
+        "sandbox": {
+          "type": "object",
+          "properties": {
+            "backend": { "type": "string", "default": "auto" },
+            "network": { "type": "string", "default": "full" },
+            "container_runtime": { "type": "string", "default": "" },
+            "docker_path": { "type": "string", "default": "" },
+            "podman_path": { "type": "string", "default": "" },
+            "image_name": { "type": "string", "default": "alpine:3.23.4" },
+            "fallback_order": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": ["landlock", "bubblewrap", "firejail", "docker", "podman"]
+            },
+            "allow_noop_fallback": { "type": "boolean", "default": false },
+            "allowed_domains": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": []
+            },
+            "memory_limit_mb": { "type": "integer", "default": 0 },
+            "max_subprocesses": { "type": "integer", "default": 0 },
+            "allow_devices": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": []
+            }
+          }
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "tool_receipts": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "show_in_response": { "type": "boolean", "default": false },
+            "inject_system_prompt": { "type": "boolean", "default": true }
+          }
+        },
+        "max_history_messages": { "type": "integer", "default": 50 },
+        "consecutive_message_limit": { "type": "integer", "default": 5 },
+        "max_tool_iterations": { "type": "integer", "default": 10 },
+        "max_tool_result_chars": { "type": "integer", "default": 50000 },
+        "max_system_prompt_chars": { "type": "integer", "default": 0 }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "http": {
+          "type": "object",
+          "properties": {
+            "max_body_bytes": { "type": "integer", "default": 50000 }
+          }
+        },
+        "web_search": {
+          "type": "object",
+          "properties": {
+            "provider": { "type": "string", "default": "none" },
+            "max_response_bytes": { "type": "integer", "default": 50000 },
+            "brave_api_key_env": { "type": "string", "default": "BRAVE_SEARCH_API_KEY" },
+            "serper_api_key_env": { "type": "string", "default": "SERPER_API_KEY" },
+            "google_api_key_env": { "type": "string", "default": "GOOGLE_CSE_API_KEY" },
+            "google_cse_id_env": { "type": "string", "default": "GOOGLE_CSE_ID" }
+          }
+        }
+      }
+    },
+    "browser": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "allowed_domains": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["*"]
+        },
+        "lightpanda": {
+          "type": "object",
+          "properties": {
+            "cdp_url": { "type": "string", "default": "ws://127.0.0.1:9222" },
+            "version_url": { "type": "string", "default": "http://127.0.0.1:9222/json/version" },
+            "require_loopback": { "type": "boolean", "default": true },
+            "command_timeout_ms": { "type": "integer", "default": 5000 },
+            "navigation_timeout_ms": { "type": "integer", "default": 30000 },
+            "max_message_bytes": { "type": "integer", "default": 1048576 }
+          }
+        }
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false }
+      }
+    },
+    "sop": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "path": { "type": "string", "default": "" }
+      }
+    },
+    "cron": {
+      "type": "object",
+      "properties": {
+        "tools_enabled": { "type": "boolean", "default": false },
+        "enabled": { "type": "boolean", "default": false },
+        "id": { "type": "string", "default": "config-cron" },
+        "schedule": { "type": "string", "default": "" },
+        "prompt": { "type": "string", "default": "" },
+        "delivery_target": { "type": "string", "default": "default" },
+        "once": { "type": "boolean", "default": false }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "properties": {
+        "deferred_loading": { "type": "boolean", "default": true }
+      }
+    },
+    "heartbeat": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "state_path": { "type": "string", "default": "heartbeat.state" }
+      }
+    },
+    "channels": {
+      "type": "object",
+      "properties": {
+        "session_persistence": { "type": "boolean", "default": true },
+        "session_backend": { "type": "string", "default": "sqlite" },
+        "ack_reactions": { "type": "boolean", "default": false },
+        "show_tool_calls": { "type": "boolean", "default": false },
+        "max_seen_message_ids": { "type": "integer", "default": 1024 },
+        "telegram": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "bot_token_env": { "type": "string", "default": "SMOLCLAW_TELEGRAM_BOT_TOKEN" },
+            "bot_token": { "type": "string", "default": "", "x-secret": true },
+            "allowed_users": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": []
+            },
+            "mention_only": { "type": "boolean", "default": false },
+            "interrupt_on_new_message": { "type": "boolean", "default": false },
+            "post_reactions": { "type": "boolean", "default": false },
+            "stream_mode": { "type": "string", "default": "off" },
+            "approval_timeout_secs": { "type": "integer", "default": 120 },
+            "draft_update_interval_ms": { "type": "integer", "default": 1000 },
+            "poll_timeout_seconds": { "type": "integer", "default": 30 },
+            "message_split_bytes": { "type": "integer", "default": 3900 }
+          }
+        }
+      },
+      "patternProperties": {
+        "^[A-Za-z0-9_.-]+$": {
+          "type": "object",
+          "properties": {
+            "tools_allow": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": []
+            },
+            "tools_deny": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": []
+            },
+            "autonomy_level": { "type": "string", "default": "" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

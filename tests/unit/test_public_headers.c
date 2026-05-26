@@ -1,0 +1,38 @@
+#include "sc/allocator.h"
+#include "sc/acp.h"
+#include "sc/api.h"
+#include "sc/buffer.h"
+#include "sc/channel.h"
+#include "sc/cli.h"
+#include "sc/config.h"
+#include "sc/contract.h"
+#include "sc/gateway.h"
+#include "sc/hardware.h"
+#include "sc/i18n.h"
+#include "sc/json.h"
+#include "sc/log.h"
+#include "sc/map.h"
+#include "sc/media.h"
+#include "sc/memory.h"
+#include "sc/observer.h"
+#include "sc/peripheral.h"
+#include "sc/plugin.h"
+#include "sc/provider.h"
+#include "sc/registry.h"
+#include "sc/result.h"
+#include "sc/runtime.h"
+#include "sc/sandbox.h"
+#include "sc/security.h"
+#include "sc/string.h"
+#include "sc/time.h"
+#include "sc/toml.h"
+#include "sc/url.h"
+#include "sc/vector.h"
+#include "sc/version.h"
+#include "sc/sc_config_schema.h"
+
+int main(void)
+{
+    SC_STATIC_ASSERT(SC_ABI_VERSION_MAJOR == 0, "phase 2 ABI major is pre-1.0");
+    return 0;
+}

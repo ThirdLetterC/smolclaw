@@ -1,0 +1,8 @@
+-xc
+-std=c23
+-Wall
+-Wextra
+-Wpedantic
+-Werror
+-Iexamples/templates
+-Iinclude
