@@ -1621,7 +1621,7 @@ function(sc_add_third_party_dependencies)
     if(SC_ENABLE_THIRD_PARTY_WEBSOCKET_CLIENT AND TARGET SC::wolfssl AND EXISTS "${tp}/websocket-client/src/websocket_client.c")
         sc_third_party_add_static(sc_tp_websocket_client
             "${tp}/websocket-client/src/websocket_client.c"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/deps/wolfssl_ecc_fp_compat.c"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/wolfssl_ecc_fp_compat.c"
         )
         sc_third_party_include(sc_tp_websocket_client "${tp}/websocket-client/include")
         target_link_libraries(sc_tp_websocket_client PUBLIC SC::wolfssl)
