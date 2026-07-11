@@ -222,8 +222,13 @@ sc_status sc_http_client_perform(sc_http_client *client,
     (void)curl_easy_setopt(op->easy, CURLOPT_CONNECTTIMEOUT_MS, request->connect_timeout_ms <= 0 ? 10000L : (long)request->connect_timeout_ms);
     (void)curl_easy_setopt(op->easy, CURLOPT_TIMEOUT_MS, request->timeout_ms <= 0 ? 30000L : (long)request->timeout_ms);
     (void)curl_easy_setopt(op->easy, CURLOPT_FOLLOWLOCATION, request->follow_location ? 1L : 0L);
+#if LIBCURL_VERSION_NUM >= 0x075500
+    (void)curl_easy_setopt(op->easy, CURLOPT_PROTOCOLS_STR, "http,https");
+    (void)curl_easy_setopt(op->easy, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+#else
     (void)curl_easy_setopt(op->easy, CURLOPT_PROTOCOLS, (long)(CURLPROTO_HTTP | CURLPROTO_HTTPS));
     (void)curl_easy_setopt(op->easy, CURLOPT_REDIR_PROTOCOLS, (long)(CURLPROTO_HTTP | CURLPROTO_HTTPS));
+#endif
     op->allow_private_network = request->allow_private_network;
     (void)curl_easy_setopt(op->easy, CURLOPT_OPENSOCKETFUNCTION, http_open_socket_cb);
     (void)curl_easy_setopt(op->easy, CURLOPT_OPENSOCKETDATA, op);
