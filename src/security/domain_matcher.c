@@ -19,8 +19,14 @@ sc_status sc_security_validate_url(const sc_security_policy *policy, sc_str url_
     if (!sc_status_is_ok(status)) {
         return status;
     }
+    if (!sc_str_equal(sc_string_as_str(&url.scheme), sc_str_from_cstr("http")) &&
+        !sc_str_equal(sc_string_as_str(&url.scheme), sc_str_from_cstr("https"))) {
+        status = sc_status_security_denied("sc.security.url_scheme_denied");
+    }
     if (!policy->url_credentials_allowed) {
-        status = sc_url_reject_credentials(&url);
+        if (sc_status_is_ok(status)) {
+            status = sc_url_reject_credentials(&url);
+        }
     }
     if (sc_status_is_ok(status) && domain_list_matches(&policy->denied_domains, &url)) {
         status = sc_status_security_denied("sc.security.domain_denied");

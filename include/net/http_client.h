@@ -29,6 +29,7 @@ typedef struct sc_http_request {
     int64_t connect_timeout_ms;
     long http_version;
     bool follow_location;
+    bool allow_private_network;
     sc_str aws_sigv4;
     sc_str username;
     sc_str password;

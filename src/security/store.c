@@ -3,9 +3,11 @@
 
 #include "security/security_internal.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #ifndef O_CLOEXEC
@@ -21,7 +23,9 @@ static sc_status decode_escaped(sc_allocator *alloc, sc_str value, sc_string *ou
 static bool split_fields(sc_str line, sc_str *fields, size_t count);
 static bool parse_u64_hex(sc_str text, uint64_t *out);
 static bool parse_i64(sc_str text, int64_t *out);
-static bool parse_key_hex(sc_str text, unsigned char *out, size_t out_len);
+static sc_status receipt_key_path(sc_allocator *alloc, sc_str path, sc_string *out);
+static sc_status save_receipt_key(sc_allocator *alloc, sc_str path, const unsigned char *key, size_t key_len);
+static sc_status load_receipt_key(sc_allocator *alloc, sc_str path, unsigned char *key, size_t key_len);
 static int hex_value(char ch);
 static sc_status write_audit_record(FILE *file, const sc_audit_record *record);
 static sc_status load_audit_record(sc_audit_chain *chain, sc_str line);
@@ -102,7 +106,6 @@ sc_status sc_audit_chain_load_file(sc_allocator *alloc, sc_str path, sc_audit_ch
 sc_status sc_receipt_chain_save_file(const sc_receipt_chain *chain, sc_str path)
 {
     FILE *file = nullptr;
-    char key_hex[65] = {0};
     sc_status status = sc_status_ok();
 
     if (chain == nullptr || !chain->key_initialized) {
@@ -111,14 +114,15 @@ sc_status sc_receipt_chain_save_file(const sc_receipt_chain *chain, sc_str path)
     if (!sc_receipt_chain_verify(chain)) {
         return sc_status_security_denied("sc.receipt.store.tamper_detected");
     }
+    status = save_receipt_key(chain->alloc, path, chain->session_key, sizeof(chain->session_key));
+    if (!sc_status_is_ok(status)) {
+        return status;
+    }
     status = open_store_writer(chain->alloc, path, &file);
     if (!sc_status_is_ok(status)) {
         return status;
     }
-    for (size_t i = 0; i < sizeof(chain->session_key); i += 1) {
-        (void)snprintf(&key_hex[i * 2u], sizeof(key_hex) - i * 2u, "%02x", chain->session_key[i]);
-    }
-    if (fprintf(file, "sc-receipt-store-v1|%s\n", key_hex) < 0) {
+    if (fputs("sc-receipt-store-v2\n", file) == EOF) {
         status = sc_status_io("sc.receipt.store.write_failed");
     }
     for (size_t i = 0; sc_status_is_ok(status) && i < chain->receipts.len; i += 1) {
@@ -135,7 +139,6 @@ sc_status sc_receipt_chain_load_file(sc_allocator *alloc, sc_str path, sc_receip
 {
     FILE *file = nullptr;
     sc_string line = {0};
-    sc_str header[2] = {0};
     bool found = false;
     sc_status status = sc_status_ok();
 
@@ -149,15 +152,13 @@ sc_status sc_receipt_chain_load_file(sc_allocator *alloc, sc_str path, sc_receip
     }
     status = read_line(file, alloc, &line, &found);
     if (sc_status_is_ok(status) &&
-        (!found || !split_fields(sc_string_as_str(&line), header, SC_ARRAY_LEN(header)) ||
-         !sc_str_equal(header[0], sc_str_from_cstr("sc-receipt-store-v1")))) {
+        (!found || !sc_str_equal(sc_string_as_str(&line), sc_str_from_cstr("sc-receipt-store-v2")))) {
         status = sc_status_parse("sc.receipt.store.header_invalid");
     }
     sc_receipt_chain_init(out, alloc);
     if (sc_status_is_ok(status)) {
-        if (!parse_key_hex(header[1], out->session_key, sizeof(out->session_key))) {
-            status = sc_status_parse("sc.receipt.store.key_invalid");
-        } else {
+        status = load_receipt_key(alloc, path, out->session_key, sizeof(out->session_key));
+        if (sc_status_is_ok(status)) {
             out->key_initialized = true;
         }
     }
@@ -214,7 +215,7 @@ static sc_status open_store_writer(sc_allocator *alloc, sc_str path, FILE **out)
     if (!sc_status_is_ok(status)) {
         return status;
     }
-    fd = open(path_cstr, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    fd = open(path_cstr, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
     sc_free(alloc, path_cstr, path.len + 1u, _Alignof(char));
     if (fd < 0) {
         return sc_status_io("sc.security.store.open_failed");
@@ -230,6 +231,8 @@ static sc_status open_store_writer(sc_allocator *alloc, sc_str path, FILE **out)
 static sc_status open_store_reader(sc_allocator *alloc, sc_str path, FILE **out)
 {
     char *path_cstr = nullptr;
+    struct stat st = {0};
+    int fd = -1;
     sc_status status = sc_status_ok();
 
     if (out == nullptr) {
@@ -239,9 +242,20 @@ static sc_status open_store_reader(sc_allocator *alloc, sc_str path, FILE **out)
     if (!sc_status_is_ok(status)) {
         return status;
     }
-    *out = fopen(path_cstr, "rb");
+    fd = open(path_cstr, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     sc_free(alloc, path_cstr, path.len + 1u, _Alignof(char));
-    return *out == nullptr ? sc_status_io("sc.security.store.open_failed") : sc_status_ok();
+    if (fd < 0 || fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+        if (fd >= 0) {
+            (void)close(fd);
+        }
+        return sc_status_security_denied("sc.security.store.unsafe_file");
+    }
+    *out = fdopen(fd, "rb");
+    if (*out == nullptr) {
+        (void)close(fd);
+        return sc_status_io("sc.security.store.fdopen_failed");
+    }
+    return sc_status_ok();
 }
 
 static sc_status read_line(FILE *file, sc_allocator *alloc, sc_string *out, bool *found)
@@ -401,20 +415,102 @@ static bool parse_i64(sc_str text, int64_t *out)
     return true;
 }
 
-static bool parse_key_hex(sc_str text, unsigned char *out, size_t out_len)
+static sc_status receipt_key_path(sc_allocator *alloc, sc_str path, sc_string *out)
 {
-    if (out == nullptr || text.len != out_len * 2u) {
-        return false;
+    sc_string_builder builder = {0};
+    sc_status status;
+
+    if (out == nullptr || path.ptr == nullptr || path.len == 0) {
+        return sc_status_invalid_argument("sc.receipt.store.key_path_invalid");
     }
-    for (size_t i = 0; i < out_len; i += 1) {
-        int hi = hex_value(text.ptr[i * 2u]);
-        int lo = hex_value(text.ptr[i * 2u + 1u]);
-        if (hi < 0 || lo < 0) {
-            return false;
+    sc_string_builder_init(&builder, alloc);
+    status = sc_string_builder_append(&builder, path);
+    if (sc_status_is_ok(status)) {
+        status = sc_string_builder_append_cstr(&builder, ".key");
+    }
+    if (sc_status_is_ok(status)) {
+        status = sc_string_builder_finish(&builder, out);
+    } else {
+        sc_string_builder_clear(&builder);
+    }
+    return status;
+}
+
+static sc_status save_receipt_key(sc_allocator *alloc,
+                                  sc_str path,
+                                  const unsigned char *key,
+                                  size_t key_len)
+{
+    sc_string key_path = {0};
+    sc_status status = receipt_key_path(alloc, path, &key_path);
+    int fd = -1;
+    size_t offset = 0;
+
+    if (!sc_status_is_ok(status)) {
+        return status;
+    }
+    fd = open(key_path.ptr, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        sc_string_clear(&key_path);
+        return sc_status_io("sc.receipt.store.key_open_failed");
+    }
+    while (offset < key_len) {
+        ssize_t count = write(fd, key + offset, key_len - offset);
+        if (count < 0 && errno == EINTR) {
+            continue;
         }
-        out[i] = (unsigned char)((hi << 4u) | lo);
+        if (count <= 0) {
+            status = sc_status_io("sc.receipt.store.key_write_failed");
+            break;
+        }
+        offset += (size_t)count;
     }
-    return true;
+    if (close(fd) != 0 && sc_status_is_ok(status)) {
+        status = sc_status_io("sc.receipt.store.key_close_failed");
+    }
+    sc_string_clear(&key_path);
+    return status;
+}
+
+static sc_status load_receipt_key(sc_allocator *alloc,
+                                  sc_str path,
+                                  unsigned char *key,
+                                  size_t key_len)
+{
+    sc_string key_path = {0};
+    struct stat st = {0};
+    sc_status status = receipt_key_path(alloc, path, &key_path);
+    int fd = -1;
+    size_t offset = 0;
+
+    if (!sc_status_is_ok(status)) {
+        return status;
+    }
+    fd = open(key_path.ptr, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0 || fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != geteuid() ||
+        (st.st_mode & (S_IRWXG | S_IRWXO)) != 0 || st.st_size != (off_t)key_len) {
+        if (fd >= 0) {
+            (void)close(fd);
+        }
+        sc_string_clear(&key_path);
+        return sc_status_security_denied("sc.receipt.store.key_invalid");
+    }
+    while (offset < key_len) {
+        ssize_t count = read(fd, key + offset, key_len - offset);
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        if (count <= 0) {
+            status = sc_status_io("sc.receipt.store.key_read_failed");
+            break;
+        }
+        offset += (size_t)count;
+    }
+    if (close(fd) != 0 && sc_status_is_ok(status)) {
+        status = sc_status_io("sc.receipt.store.key_close_failed");
+    }
+    sc_string_clear(&key_path);
+    return status;
 }
 
 static int hex_value(char ch)

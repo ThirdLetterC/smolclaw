@@ -2144,6 +2144,7 @@ static sc_status http_provider_async_schedule(http_provider_async_state *state,
                 10000 :
                 state->options.timeout_ms,
             .follow_location = false,
+            .allow_private_network = state->options.allow_loopback,
             .aws_sigv4 = sc_string_as_str(&state->aws_sigv4),
             .username = sc_string_as_str(&state->credential),
             .password = sc_string_as_str(&state->aws_secret),

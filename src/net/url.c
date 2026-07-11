@@ -198,11 +198,15 @@ bool sc_url_host_is_private_address(const sc_url *url)
         return false;
     }
 
-    return octets[0] == 10 ||
+    return octets[0] == 0 ||
+           octets[0] == 10 ||
            octets[0] == 127 ||
+           octets[0] >= 224 ||
+           (octets[0] == 100 && octets[1] >= 64 && octets[1] <= 127) ||
            (octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31) ||
            (octets[0] == 192 && octets[1] == 168) ||
-           (octets[0] == 169 && octets[1] == 254);
+           (octets[0] == 169 && octets[1] == 254) ||
+           (octets[0] == 198 && (octets[1] == 18 || octets[1] == 19));
 }
 
 void sc_url_clear(sc_url *url)

@@ -33,20 +33,20 @@ set(SC_UV_BOOTSTRAP_DIR
     "Build-local directory for bootstrapped uv when uv is not installed."
 )
 
-set(SC_LIBUV_TAG "v1.52.1" CACHE STRING "Pinned libuv Git tag.")
-set(SC_CURL_TAG "curl-8_20_0" CACHE STRING "Pinned curl Git tag.")
-set(SC_WOLFSSL_TAG "v5.9.1-stable" CACHE STRING "Pinned wolfSSL Git tag.")
-set(SC_MBEDTLS_TAG "mbedtls-4.1.0" CACHE STRING "Pinned Mbed TLS Git tag.")
-set(SC_NGHTTP2_TAG "v1.69.0" CACHE STRING "Pinned nghttp2 Git tag.")
-set(SC_LIBSODIUM_TAG "1.0.22-RELEASE" CACHE STRING "Pinned libsodium Git tag.")
-set(SC_CMARK_TAG "0.31.2" CACHE STRING "Pinned cmark Git tag.")
-set(SC_OPUS_TAG "v1.5.2" CACHE STRING "Pinned Opus Git tag.")
-set(SC_SQLITE_TAG "version-3.53.0" CACHE STRING "Pinned SQLite Git tag.")
-set(SC_WAMR_TAG "WAMR-2.4.4" CACHE STRING "Pinned wasm-micro-runtime Git tag.")
-set(SC_CPYTHON_TAG "v3.14.4" CACHE STRING "Pinned CPython Git tag.")
-set(SC_MIMALLOC_TAG "v3.3.2" CACHE STRING "Pinned mimalloc Git tag.")
+set(SC_LIBUV_TAG "1cfa32ff59c076ffb6ed735bbc8c18361558661f" CACHE STRING "Pinned libuv Git revision.")
+set(SC_CURL_TAG "a05f34973e6c4bb629d018f7cb51487be1c904d8" CACHE STRING "Pinned curl Git revision.")
+set(SC_WOLFSSL_TAG "1d363f3adceba9d1478230ede476a37b0dcdef24" CACHE STRING "Pinned wolfSSL Git revision.")
+set(SC_MBEDTLS_TAG "0fe989b6b514192783c469039edd325fd0989806" CACHE STRING "Pinned Mbed TLS Git revision.")
+set(SC_NGHTTP2_TAG "68cb6900fde14c77f0cd7add0e094a862960eb99" CACHE STRING "Pinned nghttp2 Git revision.")
+set(SC_LIBSODIUM_TAG "77e1ce5d6dee871c49ef211222ba18ef0c486bda" CACHE STRING "Pinned libsodium Git revision.")
+set(SC_CMARK_TAG "eec0eeba6d31189fd828314576494566d539b1e3" CACHE STRING "Pinned cmark Git revision.")
+set(SC_OPUS_TAG "ddbe48383984d56acd9e1ab6a090c54ca6b735a6" CACHE STRING "Pinned Opus Git revision.")
+set(SC_SQLITE_TAG "4ebc7fdcf459e8d88eb5b019c2949bda86565528" CACHE STRING "Pinned SQLite Git revision.")
+set(SC_WAMR_TAG "8c18e3f68b16c4bcaf05996b2636f6ed2b4cf629" CACHE STRING "Pinned wasm-micro-runtime Git revision.")
+set(SC_CPYTHON_TAG "23116f998f6789d8c2fbe5ed5b8146854c8c2a4f" CACHE STRING "Pinned CPython Git revision.")
+set(SC_MIMALLOC_TAG "30b2d9d89099bee08e9f67a1ffb3e12e7ba45227" CACHE STRING "Pinned mimalloc Git revision.")
 set(SC_JEMALLOC_TAG "5.3.1" CACHE STRING "Pinned jemalloc release tag.")
-set(SC_ISOCLINE_TAG "v1.1.0" CACHE STRING "Pinned isocline Git tag.")
+set(SC_ISOCLINE_TAG "d55a58139badbe83d61c5d89954fa5bddcabe6d7" CACHE STRING "Pinned isocline Git revision.")
 set(SC_JEMALLOC_SHA256
     "3826bc80232f22ed5c4662f3034f799ca316e819103bdc7bb99018a421706f92"
     CACHE STRING
@@ -355,6 +355,12 @@ function(sc_try_system_opus out)
         pkg_check_modules(SC_SYSTEM_OPUS QUIET IMPORTED_TARGET opus)
         if(SC_SYSTEM_OPUS_FOUND AND TARGET PkgConfig::SC_SYSTEM_OPUS)
             sc_add_imported_interface(SC::opus LINK_LIBRARIES PkgConfig::SC_SYSTEM_OPUS)
+            foreach(opus_include IN LISTS SC_SYSTEM_OPUS_INCLUDE_DIRS)
+                get_filename_component(opus_include_parent "${opus_include}" DIRECTORY)
+                if(EXISTS "${opus_include_parent}/opus/opus.h")
+                    target_include_directories(SC::opus INTERFACE "${opus_include_parent}")
+                endif()
+            endforeach()
             set("${out}" TRUE PARENT_SCOPE)
         else()
             find_library(SC_SYSTEM_OPUS_LIBRARY NAMES opus)
@@ -579,7 +585,7 @@ function(sc_add_github_libuv)
     ExternalProject_Add(sc_ep_libuv
         GIT_REPOSITORY https://github.com/libuv/libuv.git
         GIT_TAG "${SC_LIBUV_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         CMAKE_ARGS
             ${common_args}
@@ -619,7 +625,7 @@ function(sc_add_github_wolfssl)
     ExternalProject_Add(sc_ep_wolfssl
         GIT_REPOSITORY https://github.com/wolfSSL/wolfssl.git
         GIT_TAG "${SC_WOLFSSL_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         CMAKE_ARGS
             ${common_args}
@@ -671,7 +677,7 @@ function(sc_add_github_nghttp2)
     ExternalProject_Add(sc_ep_nghttp2
         GIT_REPOSITORY https://github.com/nghttp2/nghttp2.git
         GIT_TAG "${SC_NGHTTP2_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         CMAKE_ARGS
             ${common_args}
@@ -703,28 +709,7 @@ function(sc_add_uv_bootstrap out)
         set("${out}" "" PARENT_SCOPE)
         return()
     endif()
-    if(TARGET sc_ep_uv)
-        set("${out}" sc_ep_uv PARENT_SCOPE)
-        return()
-    endif()
-    if(NOT SC_CURL_EXECUTABLE OR NOT SC_SH_EXECUTABLE)
-        message(FATAL_ERROR "Installing uv requires curl and sh. Install uv manually or provide curl and sh on PATH.")
-    endif()
-
-    ExternalProject_Add(sc_ep_uv
-        PREFIX "${CMAKE_BINARY_DIR}/sc_ep_uv-prefix"
-        DOWNLOAD_COMMAND ""
-        CONFIGURE_COMMAND "${CMAKE_COMMAND}" -E make_directory "${SC_UV_BOOTSTRAP_DIR}"
-        BUILD_COMMAND
-            "${CMAKE_COMMAND}" -E env
-                "UV_INSTALL_DIR=${SC_UV_BOOTSTRAP_DIR}"
-                "${SC_SH_EXECUTABLE}" -c
-                "\"${SC_CURL_EXECUTABLE}\" -LsSf https://astral.sh/uv/install.sh | \"${SC_SH_EXECUTABLE}\""
-        INSTALL_COMMAND ""
-        BUILD_BYPRODUCTS "${SC_UV_COMMAND}"
-    )
-    add_dependencies(sc_external_deps sc_ep_uv)
-    set("${out}" sc_ep_uv PARENT_SCOPE)
+    message(FATAL_ERROR "uv is required to build the pinned Mbed TLS generator environment; install a reviewed uv package on PATH")
 endfunction()
 
 function(sc_add_github_mbedtls)
@@ -748,8 +733,8 @@ function(sc_add_github_mbedtls)
         BUILD_COMMAND
             "${SC_UV_COMMAND}" pip install
                 --python "${mbedtls_python}"
-                jsonschema
-                jinja2
+                jsonschema==4.26.0
+                jinja2==3.1.6
         INSTALL_COMMAND ""
     )
     add_dependencies(sc_external_deps sc_ep_mbedtls_python)
@@ -759,7 +744,7 @@ function(sc_add_github_mbedtls)
         DEPENDS sc_ep_mbedtls_python
         GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
         GIT_TAG "${SC_MBEDTLS_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         CMAKE_ARGS
             ${common_args}
@@ -852,7 +837,7 @@ function(sc_add_github_curl)
         ${curl_depends_args}
         GIT_REPOSITORY https://github.com/curl/curl.git
         GIT_TAG "${SC_CURL_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         CMAKE_ARGS
             ${common_args}
@@ -922,7 +907,7 @@ function(sc_add_github_libsodium)
     ExternalProject_Add(sc_ep_libsodium
         GIT_REPOSITORY https://github.com/jedisct1/libsodium.git
         GIT_TAG "${SC_LIBSODIUM_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         BUILD_IN_SOURCE TRUE
         CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix=${SC_DEPS_PREFIX} --libdir=${SC_DEPS_PREFIX}/lib --disable-shared --enable-static --with-pic
@@ -948,7 +933,7 @@ function(sc_add_github_cmark)
     ExternalProject_Add(sc_ep_cmark
         GIT_REPOSITORY https://github.com/commonmark/cmark.git
         GIT_TAG "${SC_CMARK_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         CMAKE_ARGS
             ${common_args}
@@ -976,7 +961,7 @@ function(sc_add_github_opus)
     ExternalProject_Add(sc_ep_opus
         GIT_REPOSITORY https://github.com/xiph/opus.git
         GIT_TAG "${SC_OPUS_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         CMAKE_ARGS
             ${common_args}
@@ -1013,7 +998,7 @@ function(sc_add_github_sqlite)
     ExternalProject_Add(sc_ep_sqlite
         GIT_REPOSITORY https://github.com/sqlite/sqlite.git
         GIT_TAG "${SC_SQLITE_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         BUILD_IN_SOURCE TRUE
         CONFIGURE_COMMAND
@@ -1061,7 +1046,7 @@ function(sc_add_github_isocline)
     ExternalProject_Add(sc_ep_isocline
         GIT_REPOSITORY https://github.com/daanx/isocline.git
         GIT_TAG "${SC_ISOCLINE_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         CMAKE_ARGS
             ${common_args}
@@ -1097,7 +1082,7 @@ function(sc_add_github_wamr)
     ExternalProject_Add(sc_ep_wamr
         GIT_REPOSITORY https://github.com/bytecodealliance/wasm-micro-runtime.git
         GIT_TAG "${SC_WAMR_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         SOURCE_DIR "${wamr_source_dir}"
         PATCH_COMMAND
@@ -1147,7 +1132,7 @@ function(sc_add_github_cpython)
     ExternalProject_Add(sc_ep_cpython
         GIT_REPOSITORY https://github.com/python/cpython.git
         GIT_TAG "${SC_CPYTHON_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         BUILD_IN_SOURCE TRUE
         CONFIGURE_COMMAND
@@ -1195,7 +1180,7 @@ function(sc_add_github_mimalloc)
     ExternalProject_Add(sc_ep_mimalloc
         GIT_REPOSITORY https://github.com/microsoft/mimalloc.git
         GIT_TAG "${SC_MIMALLOC_TAG}"
-        GIT_SHALLOW TRUE
+        GIT_SHALLOW FALSE
         UPDATE_DISCONNECTED TRUE
         CMAKE_ARGS
             "-DCMAKE_BUILD_TYPE=Release"
@@ -1437,6 +1422,7 @@ function(sc_third_party_defaults target)
     )
     sc_third_party_c23_compat("${target}" PUBLIC)
     sc_apply_sanitizers("${target}")
+    sc_apply_hardening("${target}")
 endfunction()
 
 function(sc_third_party_include target)
@@ -1491,7 +1477,9 @@ function(sc_add_third_party_dependencies)
         sc_register_third_party(sc_tp_clags)
     endif()
 
-    if(EXISTS "${tp}/hiredis/src/hiredis.c")
+    # These vendored snapshots include Linux-only private headers. Prefer a
+    # reviewed system package on Apple platforms until the wrappers need them.
+    if(NOT APPLE AND EXISTS "${tp}/hiredis/src/hiredis.c")
         sc_third_party_add_static(sc_tp_hiredis
             "${tp}/hiredis/src/alloc.c"
             "${tp}/hiredis/src/async.c"
@@ -1566,7 +1554,7 @@ function(sc_add_third_party_dependencies)
         sc_register_third_party(sc_tp_psimd)
     endif()
 
-    if(EXISTS "${tp}/rabbitmq/src/amqp_api.c")
+    if(NOT APPLE AND EXISTS "${tp}/rabbitmq/src/amqp_api.c")
         sc_third_party_add_static(sc_tp_rabbitmq
             "${tp}/rabbitmq/src/amqp_api.c"
             "${tp}/rabbitmq/src/amqp_connection.c"

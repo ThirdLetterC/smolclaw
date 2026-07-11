@@ -104,6 +104,7 @@ static int run_request(const char *response, size_t max_response_bytes, sc_statu
                                              .url = sc_str_from_cstr(url),
                                              .user_agent = sc_str_from_cstr("smolclaw-test-http-client"),
                                              .max_response_bytes = max_response_bytes,
+                                             .allow_private_network = true,
                                              .timeout_ms = 5000,
                                              .connect_timeout_ms = 1000,
                                          },

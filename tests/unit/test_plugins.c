@@ -712,7 +712,11 @@ static int test_extended_plugin_rules(void)
     host = nullptr;
 
     {
-        sc_str root = sc_str_from_cstr("/tmp");
+        sc_string restricted_root = {0};
+        failures += sc_test_expect_status("path restricted root",
+                                  sc_test_make_temp_dir("plugin-root", &restricted_root),
+                                  SC_OK);
+        sc_str root = sc_string_as_str(&restricted_root);
         sc_str extension = sc_str_from_cstr(".so");
         options.plugin_roots = &root;
         options.plugin_root_count = 1;
@@ -729,6 +733,8 @@ static int test_extended_plugin_rules(void)
         failures += sc_test_expect_status("path outside root", sc_plugin_load_path(host, &manifest, &plugin), SC_ERR_SECURITY_DENIED);
         sc_plugin_manifest_clear(&manifest);
         sc_plugin_host_destroy(host);
+        (void)rmdir(restricted_root.ptr);
+        sc_string_clear(&restricted_root);
     }
 
     options.plugin_roots = nullptr;

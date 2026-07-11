@@ -27,9 +27,13 @@ static sc_status file_tool_new(sc_allocator *alloc,
                                sc_tool **out);
 static sc_status invoke_file_write(file_tool *tool, const sc_tool_call *call, sc_allocator *alloc, sc_tool_result *out);
 static sc_status invoke_file_list(file_tool *tool, const sc_tool_call *call, sc_allocator *alloc, sc_tool_result *out);
-static sc_status write_all(sc_str path, sc_str content, bool append);
+static sc_status write_all_at(int parent_fd, sc_str leaf, sc_str content, bool append);
 static sc_status write_all_fd(int fd, sc_str content);
-static sc_status write_atomic(sc_allocator *alloc, sc_str path, sc_str content, bool fail_if_exists);
+static sc_status write_atomic_at(sc_allocator *alloc,
+                                 int parent_fd,
+                                 sc_str leaf,
+                                 sc_str content,
+                                 bool fail_if_exists);
 static bool name_matches(sc_str name, sc_str pattern);
 
 static const sc_tool_vtab file_write_vtab = {
@@ -167,7 +171,8 @@ static sc_status invoke_file_write(file_tool *tool, const sc_tool_call *call, sc
     sc_str content = {0};
     sc_str mode = sc_str_from_cstr("overwrite");
     sc_str otp = {0};
-    sc_string resolved = {0};
+    sc_string leaf = {0};
+    int parent_fd = -1;
     sc_status status = sc_tool_check_cancelled(&tool->base, call);
 
     if (sc_status_is_ok(status)) {
@@ -195,14 +200,14 @@ static sc_status invoke_file_write(file_tool *tool, const sc_tool_call *call, sc
                                            otp);
     }
     if (sc_status_is_ok(status)) {
-        status = sc_workspace_resolve(tool->base.context.policy, path, false, alloc, &resolved);
+        status = sc_workspace_open_parent(tool->base.context.policy, path, alloc, &parent_fd, &leaf);
     }
     if (sc_status_is_ok(status) && sc_str_equal(mode, sc_str_from_cstr("append"))) {
-        status = write_all(sc_string_as_str(&resolved), content, true);
+        status = write_all_at(parent_fd, sc_string_as_str(&leaf), content, true);
     } else if (sc_status_is_ok(status) && sc_str_equal(mode, sc_str_from_cstr("create"))) {
-        status = write_atomic(alloc, sc_string_as_str(&resolved), content, true);
+        status = write_atomic_at(alloc, parent_fd, sc_string_as_str(&leaf), content, true);
     } else if (sc_status_is_ok(status) && sc_str_equal(mode, sc_str_from_cstr("overwrite"))) {
-        status = write_atomic(alloc, sc_string_as_str(&resolved), content, false);
+        status = write_atomic_at(alloc, parent_fd, sc_string_as_str(&leaf), content, false);
     } else if (sc_status_is_ok(status)) {
         status = sc_status_invalid_argument("sc.file_write.invalid_mode");
     }
@@ -219,7 +224,10 @@ static sc_status invoke_file_write(file_tool *tool, const sc_tool_call *call, sc
                                             false,
                                             status);
     }
-    sc_string_clear(&resolved);
+    if (parent_fd >= 0) {
+        (void)close(parent_fd);
+    }
+    sc_string_clear(&leaf);
     return status;
 }
 
@@ -298,34 +306,36 @@ static sc_status invoke_file_list(file_tool *tool, const sc_tool_call *call, sc_
     return status;
 }
 
-static sc_status write_all(sc_str path, sc_str content, bool append)
+static sc_status write_all_at(int parent_fd, sc_str leaf, sc_str content, bool append)
 {
-    FILE *file = fopen(path.ptr, append ? "ab" : "wb");
-    sc_status status = sc_status_ok();
+    int flags = O_WRONLY | O_CREAT | O_CLOEXEC | O_NOFOLLOW | (append ? O_APPEND : O_TRUNC);
+    int fd = -1;
+    struct stat st = {0};
 
-    if (file == nullptr) {
-        status = sc_status_io("sc.file_write.open_failed");
-        goto cleanup;
+    if (parent_fd < 0 || leaf.ptr == nullptr || leaf.len == 0) {
+        return sc_status_invalid_argument("sc.file_write.path_invalid");
     }
-    if (content.len > 0 && fwrite(content.ptr, 1, content.len, file) != content.len) {
-        status = sc_status_io("sc.file_write.write_failed");
-        goto cleanup;
+    fd = openat(parent_fd, leaf.ptr, flags, 0600);
+    if (fd < 0) {
+        return errno == ELOOP ? sc_status_security_denied("sc.file_write.symlink_denied")
+                              : sc_status_io("sc.file_write.open_failed");
     }
-    if (fclose(file) != 0) {
-        file = nullptr;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+        (void)close(fd);
+        return sc_status_security_denied("sc.file_write.non_regular_denied");
+    }
+    sc_status status = write_all_fd(fd, content);
+    if (close(fd) != 0 && sc_status_is_ok(status)) {
         status = sc_status_io("sc.file_write.close_failed");
-        goto cleanup;
-    }
-    file = nullptr;
-
-cleanup:
-    if (file != nullptr) {
-        (void)fclose(file);
     }
     return status;
 }
 
-static sc_status write_atomic(sc_allocator *alloc, sc_str path, sc_str content, bool fail_if_exists)
+static sc_status write_atomic_at(sc_allocator *alloc,
+                                 int parent_fd,
+                                 sc_str leaf,
+                                 sc_str content,
+                                 bool fail_if_exists)
 {
     sc_string_builder builder = {0};
     sc_string tmp = {0};
@@ -339,7 +349,10 @@ static sc_status write_atomic(sc_allocator *alloc, sc_str path, sc_str content, 
         return sc_status_invalid_argument("sc.file_write.temp_name_failed");
     }
     sc_string_builder_init(&builder, alloc);
-    status = sc_string_builder_append(&builder, path);
+    if (parent_fd < 0 || leaf.ptr == nullptr || leaf.len == 0) {
+        return sc_status_invalid_argument("sc.file_write.path_invalid");
+    }
+    status = sc_string_builder_append(&builder, leaf);
     if (sc_status_is_ok(status)) {
         status = sc_string_builder_append_cstr(&builder, suffix);
     }
@@ -353,7 +366,7 @@ static sc_status write_atomic(sc_allocator *alloc, sc_str path, sc_str content, 
 #ifdef O_NOFOLLOW
         flags |= O_NOFOLLOW;
 #endif
-        fd = open(tmp.ptr, flags, 0600);
+        fd = openat(parent_fd, tmp.ptr, flags | O_CLOEXEC, 0600);
         if (fd < 0) {
             status = errno == EEXIST ? sc_status_invalid_argument("sc.file_write.temp_exists") :
                                        sc_status_io("sc.file_write.temp_open_failed");
@@ -367,19 +380,19 @@ static sc_status write_atomic(sc_allocator *alloc, sc_str path, sc_str content, 
         fd = -1;
     }
     if (sc_status_is_ok(status) && fail_if_exists) {
-        if (link(tmp.ptr, path.ptr) != 0) {
+        if (linkat(parent_fd, tmp.ptr, parent_fd, leaf.ptr, 0) != 0) {
             status = errno == EEXIST ? sc_status_invalid_argument("sc.file_write.exists") :
                                        sc_status_io("sc.file_write.link_failed");
         }
-        (void)unlink(tmp.ptr);
-    } else if (sc_status_is_ok(status) && rename(tmp.ptr, path.ptr) != 0) {
+        (void)unlinkat(parent_fd, tmp.ptr, 0);
+    } else if (sc_status_is_ok(status) && renameat(parent_fd, tmp.ptr, parent_fd, leaf.ptr) != 0) {
         status = sc_status_io("sc.file_write.rename_failed");
     }
     if (!sc_status_is_ok(status) && tmp.ptr != nullptr) {
         if (fd >= 0) {
             (void)close(fd);
         }
-        (void)unlink(tmp.ptr);
+        (void)unlinkat(parent_fd, tmp.ptr, 0);
     }
     sc_string_clear(&tmp);
     return status;

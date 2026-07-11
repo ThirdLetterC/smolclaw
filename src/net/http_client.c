@@ -8,6 +8,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 #if defined(SC_HAVE_ASYNC_HTTP)
 #include <curl/curl.h>
@@ -55,6 +58,10 @@ struct sc_http_op {
     struct curl_slist *headers;
     char error_buffer[CURL_ERROR_SIZE];
     bool multi_added;
+    bool allow_private_network;
+    sc_string url;
+    sc_string method;
+    sc_string user_agent;
 #else
     // cppcheck-suppress unusedStructMember
     unsigned char placeholder;
@@ -68,6 +75,8 @@ static sc_status http_build_headers(sc_allocator *alloc, const sc_http_request *
 static sc_status http_append_header(sc_allocator *alloc, struct curl_slist **headers, sc_str name, sc_str value);
 static size_t http_write_cb(char *ptr, size_t size, size_t nmemb, void *userdata);
 static int http_progress_cb(void *userdata, curl_off_t download_total, curl_off_t download_now, curl_off_t upload_total, curl_off_t upload_now);
+static curl_socket_t http_open_socket_cb(void *userdata, curlsocktype purpose, struct curl_sockaddr *address);
+static bool http_sockaddr_is_private(const struct sockaddr *address);
 static int http_socket_cb(CURL *easy, curl_socket_t socket, int action, void *user_data, void *socket_user_data);
 static int http_timer_cb(CURLM *multi, long timeout_ms, void *user_data);
 static void http_poll_cb(uv_poll_t *poll, int status, int events);
@@ -182,24 +191,42 @@ sc_status sc_http_client_perform(sc_http_client *client,
         return sc_status_no_memory();
     }
     status = http_build_headers(client->alloc, request, &op->headers);
+    if (sc_status_is_ok(status)) {
+        status = sc_string_from_str(client->alloc, request->url, &op->url);
+    }
+    if (sc_status_is_ok(status)) {
+        status = sc_string_from_str(client->alloc,
+                                    request->method.ptr == nullptr ? sc_str_from_cstr("GET") : request->method,
+                                    &op->method);
+    }
+    if (sc_status_is_ok(status)) {
+        status = sc_string_from_str(client->alloc,
+                                    request->user_agent.ptr == nullptr ? sc_str_from_cstr("smolclaw-c/0.1 http-client") : request->user_agent,
+                                    &op->user_agent);
+    }
     if (!sc_status_is_ok(status)) {
         sc_http_op_destroy(op);
         return status;
     }
 
     (void)curl_easy_setopt(op->easy, CURLOPT_PRIVATE, op);
-    (void)curl_easy_setopt(op->easy, CURLOPT_URL, request->url.ptr);
-    (void)curl_easy_setopt(op->easy, CURLOPT_CUSTOMREQUEST, request->method.ptr == nullptr ? "GET" : request->method.ptr);
+    (void)curl_easy_setopt(op->easy, CURLOPT_URL, op->url.ptr);
+    (void)curl_easy_setopt(op->easy, CURLOPT_CUSTOMREQUEST, op->method.ptr);
     (void)curl_easy_setopt(op->easy, CURLOPT_HTTPHEADER, op->headers);
     (void)curl_easy_setopt(op->easy, CURLOPT_WRITEFUNCTION, http_write_cb);
     (void)curl_easy_setopt(op->easy, CURLOPT_WRITEDATA, op);
     (void)curl_easy_setopt(op->easy, CURLOPT_XFERINFOFUNCTION, http_progress_cb);
     (void)curl_easy_setopt(op->easy, CURLOPT_XFERINFODATA, op);
     (void)curl_easy_setopt(op->easy, CURLOPT_NOPROGRESS, 0L);
-    (void)curl_easy_setopt(op->easy, CURLOPT_USERAGENT, request->user_agent.ptr == nullptr ? "smolclaw-c/0.1 http-client" : request->user_agent.ptr);
+    (void)curl_easy_setopt(op->easy, CURLOPT_USERAGENT, op->user_agent.ptr);
     (void)curl_easy_setopt(op->easy, CURLOPT_CONNECTTIMEOUT_MS, request->connect_timeout_ms <= 0 ? 10000L : (long)request->connect_timeout_ms);
     (void)curl_easy_setopt(op->easy, CURLOPT_TIMEOUT_MS, request->timeout_ms <= 0 ? 30000L : (long)request->timeout_ms);
     (void)curl_easy_setopt(op->easy, CURLOPT_FOLLOWLOCATION, request->follow_location ? 1L : 0L);
+    (void)curl_easy_setopt(op->easy, CURLOPT_PROTOCOLS, (long)(CURLPROTO_HTTP | CURLPROTO_HTTPS));
+    (void)curl_easy_setopt(op->easy, CURLOPT_REDIR_PROTOCOLS, (long)(CURLPROTO_HTTP | CURLPROTO_HTTPS));
+    op->allow_private_network = request->allow_private_network;
+    (void)curl_easy_setopt(op->easy, CURLOPT_OPENSOCKETFUNCTION, http_open_socket_cb);
+    (void)curl_easy_setopt(op->easy, CURLOPT_OPENSOCKETDATA, op);
     (void)curl_easy_setopt(op->easy, CURLOPT_SSL_VERIFYPEER, 1L);
     (void)curl_easy_setopt(op->easy, CURLOPT_SSL_VERIFYHOST, 2L);
     const char *ca_bundle = http_ca_bundle_path();
@@ -371,6 +398,9 @@ void sc_http_op_destroy(sc_http_op *op)
     }
     http_cleanup_easy(op);
     sc_http_response_clear(&op->response);
+    sc_string_clear(&op->url);
+    sc_string_clear(&op->method);
+    sc_string_clear(&op->user_agent);
     sc_free(op->alloc, op, sizeof(*op), _Alignof(sc_http_op));
 #else
     (void)op;
@@ -537,6 +567,59 @@ static int http_progress_cb(void *userdata,
         return 1;
     }
     return 0;
+}
+
+static curl_socket_t http_open_socket_cb(void *userdata,
+                                         curlsocktype purpose,
+                                         struct curl_sockaddr *address)
+{
+    sc_http_op *op = userdata;
+    (void)purpose;
+
+    if (address == nullptr || (op != nullptr && !op->allow_private_network &&
+                               http_sockaddr_is_private(&address->addr))) {
+        return CURL_SOCKET_BAD;
+    }
+    return socket(address->family, address->socktype, address->protocol);
+}
+
+static bool http_sockaddr_is_private(const struct sockaddr *address)
+{
+    if (address == nullptr) {
+        return true;
+    }
+    if (address->sa_family == AF_INET) {
+        const struct sockaddr_in *ipv4 = (const struct sockaddr_in *)address;
+        uint32_t host = ntohl(ipv4->sin_addr.s_addr);
+        unsigned int a = (host >> 24U) & 0xFFU;
+        unsigned int b = (host >> 16U) & 0xFFU;
+
+        return a == 0U || a == 10U || a == 127U || a >= 224U ||
+               (a == 100U && b >= 64U && b <= 127U) ||
+               (a == 169U && b == 254U) ||
+               (a == 172U && b >= 16U && b <= 31U) ||
+               (a == 192U && (b == 0U || b == 168U)) ||
+               (a == 198U && (b == 18U || b == 19U));
+    }
+    if (address->sa_family == AF_INET6) {
+        const struct sockaddr_in6 *ipv6 = (const struct sockaddr_in6 *)address;
+        const unsigned char *bytes = ipv6->sin6_addr.s6_addr;
+
+        if (IN6_IS_ADDR_UNSPECIFIED(&ipv6->sin6_addr) || IN6_IS_ADDR_LOOPBACK(&ipv6->sin6_addr) ||
+            IN6_IS_ADDR_MULTICAST(&ipv6->sin6_addr) || IN6_IS_ADDR_LINKLOCAL(&ipv6->sin6_addr)) {
+            return true;
+        }
+        if ((bytes[0] & 0xFEU) == 0xFCU) {
+            return true;
+        }
+        if (IN6_IS_ADDR_V4MAPPED(&ipv6->sin6_addr)) {
+            struct sockaddr_in mapped = {.sin_family = AF_INET};
+            (void)memcpy(&mapped.sin_addr, &bytes[12], sizeof(mapped.sin_addr));
+            return http_sockaddr_is_private((const struct sockaddr *)&mapped);
+        }
+        return false;
+    }
+    return true;
 }
 
 static int http_socket_cb(CURL *easy, curl_socket_t socket, int action, void *user_data, void *socket_user_data)

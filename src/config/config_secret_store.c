@@ -1,7 +1,10 @@
 // cppcheck-suppress-file redundantInitialization
+#define _POSIX_C_SOURCE 200809L
+
 #include "config/config_internal.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -164,13 +167,25 @@ static sc_status key_path_from_secret_path(sc_allocator *alloc, sc_str path, sc_
 static sc_status read_or_create_secret_key(file_secret_store *store)
 {
     FILE *file = nullptr;
+    struct stat st = {0};
+    int fd = -1;
     sc_status status = sc_status_ok();
 
     if (sodium_init() < 0) {
         return sc_status_unsupported("sc.secret_store.sodium_init_failed");
     }
-    file = fopen(store->key_path.ptr, "rb");
-    if (file != nullptr) {
+    fd = open(store->key_path.ptr, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd >= 0) {
+        if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != geteuid() ||
+            (st.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
+            (void)close(fd);
+            return sc_status_security_denied("sc.secret_store.key_permissions_invalid");
+        }
+        file = fdopen(fd, "rb");
+        if (file == nullptr) {
+            (void)close(fd);
+            return sc_status_io("sc.secret_store.key_open_failed");
+        }
         size_t read_len = fread(store->key, 1, sizeof(store->key), file);
         (void)fclose(file);
         if (read_len != sizeof(store->key)) {
@@ -183,8 +198,14 @@ static sc_status read_or_create_secret_key(file_secret_store *store)
         goto cleanup;
     }
     randombytes_buf(store->key, sizeof(store->key));
-    file = fopen(store->key_path.ptr, "wb");
+    fd = open(store->key_path.ptr, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        status = sc_status_io("sc.secret_store.key_open_failed");
+        goto cleanup;
+    }
+    file = fdopen(fd, "wb");
     if (file == nullptr) {
+        (void)close(fd);
         status = sc_status_io("sc.secret_store.key_open_failed");
         goto cleanup;
     }
@@ -198,7 +219,6 @@ static sc_status read_or_create_secret_key(file_secret_store *store)
         goto cleanup;
     }
     file = nullptr;
-    (void)chmod(store->key_path.ptr, 0600);
     return status;
 
 cleanup:
@@ -290,13 +310,27 @@ static sc_status decrypt_secret_line(file_secret_store *store, sc_str path, sc_s
 static sc_status load_secret_file(file_secret_store *store)
 {
     FILE *file = nullptr;
+    struct stat st = {0};
+    int fd = -1;
     char line[65'536] = {0};
     bool first = true;
     sc_status status = sc_status_ok();
 
-    file = fopen(store->path.ptr, "rb");
-    if (file == nullptr) {
+    fd = open(store->path.ptr, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0 && errno == ENOENT) {
         goto cleanup;
+    }
+    if (fd < 0 || fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != geteuid() ||
+        (st.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
+        if (fd >= 0) {
+            (void)close(fd);
+        }
+        return sc_status_security_denied("sc.secret_store.file_permissions_invalid");
+    }
+    file = fdopen(fd, "rb");
+    if (file == nullptr) {
+        (void)close(fd);
+        return sc_status_io("sc.secret_store.open_failed");
     }
     while (fgets(line, sizeof(line), file) != nullptr) {
         char *tab = nullptr;
@@ -384,14 +418,41 @@ cleanup:
 static sc_status flush_secret_file(file_secret_store *store)
 {
     FILE *file = nullptr;
+    sc_string_builder builder = {0};
+    sc_string tmp_path = {0};
+    int fd = -1;
+    char suffix[64] = {0};
     sc_status status = sc_status_ok();
 
     status = ensure_secret_parent_dirs(sc_string_as_str(&store->path));
     if (!sc_status_is_ok(status)) {
         return status;
     }
-    file = fopen(store->path.ptr, "wb");
+    int written = snprintf(suffix, sizeof(suffix), ".tmp.%ld", (long)getpid());
+    if (written <= 0 || (size_t)written >= sizeof(suffix)) {
+        return sc_status_invalid_argument("sc.secret_store.temp_path_failed");
+    }
+    sc_string_builder_init(&builder, store->alloc);
+    status = sc_string_builder_append(&builder, sc_string_as_str(&store->path));
+    if (sc_status_is_ok(status)) {
+        status = sc_string_builder_append_cstr(&builder, suffix);
+    }
+    if (sc_status_is_ok(status)) {
+        status = sc_string_builder_finish(&builder, &tmp_path);
+    } else {
+        sc_string_builder_clear(&builder);
+    }
+    if (!sc_status_is_ok(status)) {
+        return status;
+    }
+    fd = open(tmp_path.ptr, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        status = sc_status_io("sc.secret_store.open_failed");
+        goto cleanup;
+    }
+    file = fdopen(fd, "wb");
     if (file == nullptr) {
+        (void)close(fd);
         status = sc_status_io("sc.secret_store.open_failed");
         goto cleanup;
     }
@@ -415,13 +476,20 @@ static sc_status flush_secret_file(file_secret_store *store)
         goto cleanup;
     }
     file = nullptr;
-    (void)chmod(store->path.ptr, 0600);
+    if (rename(tmp_path.ptr, store->path.ptr) != 0) {
+        status = sc_status_io("sc.secret_store.rename_failed");
+        goto cleanup;
+    }
     status = sc_status_ok();
 
 cleanup:
     if (file != nullptr) {
         (void)fclose(file);
     }
+    if (!sc_status_is_ok(status) && tmp_path.ptr != nullptr) {
+        (void)unlink(tmp_path.ptr);
+    }
+    sc_string_clear(&tmp_path);
     return status;
 }
 #endif

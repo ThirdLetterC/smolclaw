@@ -3,6 +3,8 @@
 #include "security/security_internal.h"
 
 #include <limits.h>
+#include <fcntl.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -12,6 +14,103 @@ static sc_status canonicalize_for_write(sc_str input_path, sc_allocator *alloc, 
 static sc_status make_absolute(sc_str input_path, sc_allocator *alloc, sc_string *out);
 static sc_status parent_and_leaf(sc_allocator *alloc, sc_str path, sc_string *parent, sc_str *leaf);
 static bool path_has_embedded_nul(sc_str path);
+
+sc_status sc_workspace_open_parent(const sc_security_policy *policy,
+                                   sc_str input_path,
+                                   sc_allocator *alloc,
+                                   int *out_parent_fd,
+                                   sc_string *out_leaf)
+{
+    constexpr size_t max_segment_len = 255;
+    sc_string resolved = {0};
+    sc_string root = {0};
+    sc_str relative = {0};
+    size_t leaf_start = 0;
+    size_t relative_offset = 0;
+    int parent_fd = -1;
+    sc_status status;
+
+    if (policy == nullptr || out_parent_fd == nullptr || out_leaf == nullptr) {
+        return sc_status_invalid_argument("sc.security.path_invalid_argument");
+    }
+    *out_parent_fd = -1;
+    alloc = alloc == nullptr ? sc_allocator_heap() : alloc;
+    status = sc_security_validate_path(policy, input_path, false);
+    if (sc_status_is_ok(status)) {
+        status = sc_workspace_resolve(policy, input_path, false, alloc, &resolved);
+    }
+    if (sc_status_is_ok(status)) {
+        status = policy->workspace_only
+                     ? canonicalize_existing(sc_string_as_str(&policy->workspace_root), alloc, &root)
+                     : sc_string_from_cstr(alloc, "/", &root);
+    }
+    if (!sc_status_is_ok(status)) {
+        goto cleanup;
+    }
+    relative_offset = root.len == 1U && root.ptr[0] == '/' ? 1U : root.len + 1U;
+    if (!sc_security_path_has_prefix(sc_string_as_str(&resolved), sc_string_as_str(&root)) ||
+        resolved.len <= relative_offset) {
+        status = sc_status_security_denied("sc.security.path_escape");
+        goto cleanup;
+    }
+    relative = sc_str_from_parts(resolved.ptr + relative_offset, resolved.len - relative_offset);
+    for (size_t i = relative.len; i > 0; i -= 1) {
+        if (relative.ptr[i - 1U] == '/') {
+            leaf_start = i;
+            break;
+        }
+    }
+    status = sc_string_from_str(alloc,
+                                sc_str_from_parts(relative.ptr + leaf_start, relative.len - leaf_start),
+                                out_leaf);
+    if (!sc_status_is_ok(status)) {
+        goto cleanup;
+    }
+    parent_fd = open(root.ptr, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (parent_fd < 0) {
+        status = sc_status_io("sc.security.workspace_open_failed");
+        goto cleanup;
+    }
+    for (size_t start = 0; start < leaf_start;) {
+        char segment[256] = {0};
+        size_t end = start;
+        size_t segment_len = 0;
+        int next_fd = -1;
+
+        while (end < leaf_start && relative.ptr[end] != '/') {
+            end += 1;
+        }
+        segment_len = end - start;
+        if (segment_len == 0 || segment_len > max_segment_len) {
+            status = sc_status_security_denied("sc.security.path_escape");
+            goto cleanup;
+        }
+        (void)memcpy(segment, relative.ptr + start, segment_len);
+        next_fd = openat(parent_fd, segment, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+        if (next_fd < 0) {
+            status = errno == ELOOP || errno == ENOTDIR
+                         ? sc_status_security_denied("sc.security.path_escape")
+                         : sc_status_io("sc.security.path_open_failed");
+            goto cleanup;
+        }
+        (void)close(parent_fd);
+        parent_fd = next_fd;
+        start = end + 1U;
+    }
+    *out_parent_fd = parent_fd;
+    parent_fd = -1;
+
+cleanup:
+    if (parent_fd >= 0) {
+        (void)close(parent_fd);
+    }
+    if (!sc_status_is_ok(status)) {
+        sc_string_clear(out_leaf);
+    }
+    sc_string_clear(&root);
+    sc_string_clear(&resolved);
+    return status;
+}
 
 sc_status sc_workspace_resolve(const sc_security_policy *policy,
                                sc_str input_path,

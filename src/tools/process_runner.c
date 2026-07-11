@@ -72,6 +72,7 @@ sc_status sc_tool_process_run_ex(sc_allocator *alloc,
     sc_sandbox_decision sandbox_decision = {0};
     char *cwd = nullptr;
     pid_t pid = -1;
+    pid_t process_group = -1;
     sc_string output = {0};
     int64_t started = 0;
     int status_code = 0;
@@ -104,6 +105,9 @@ sc_status sc_tool_process_run_ex(sc_allocator *alloc,
         if (child < 0) {
             status = sc_status_io("sc.process_runner.spawn_failed");
         } else if (child == 0) {
+            if (setpgid(0, 0) != 0) {
+                _exit(126);
+            }
             if (cwd != nullptr) {
                 if (chdir(cwd) != 0) {
                     _exit(126);
@@ -119,6 +123,10 @@ sc_status sc_tool_process_run_ex(sc_allocator *alloc,
             _exit(127);
         } else {
             pid = child;
+            process_group = child;
+            if (setpgid(child, child) != 0 && errno != EACCES) {
+                status = sc_status_io("sc.process_runner.process_group_failed");
+            }
             (void)close(pipe_fds[1]);
             pipe_fds[1] = -1;
         }
@@ -161,6 +169,9 @@ sc_status sc_tool_process_run_ex(sc_allocator *alloc,
                                       sc_str_from_parts(chunk, (size_t)read_count),
                                       request->max_output_bytes == 0 ? 4096 : request->max_output_bytes);
             }
+            if (process_group > 0) {
+                (void)kill(-process_group, SIGKILL);
+            }
             if (sc_status_is_ok(status) && (!WIFEXITED(status_code) || WEXITSTATUS(status_code) != 0)) {
                 out->exited = WIFEXITED(status_code);
                 out->exit_code = WIFEXITED(status_code) ? WEXITSTATUS(status_code) : -1;
@@ -173,7 +184,7 @@ sc_status sc_tool_process_run_ex(sc_allocator *alloc,
         }
     }
     if (!sc_status_is_ok(status) && pid > 0) {
-        (void)kill(pid, SIGKILL);
+        (void)kill(process_group > 0 ? -process_group : pid, SIGKILL);
         (void)waitpid(pid, nullptr, 0);
     }
     if (sc_status_is_ok(status) || status.code == SC_ERR_IO) {

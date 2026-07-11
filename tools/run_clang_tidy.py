@@ -71,6 +71,7 @@ def main(argv: list[str]) -> int:
     third_party_root = croot / "vendor"
     tidy_args = [
         "--quiet",
+        "--warnings-as-errors=*",
         "-p",
         str(build_dir),
         "--extra-arg=-include",

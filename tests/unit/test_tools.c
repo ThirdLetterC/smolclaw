@@ -1042,6 +1042,25 @@ static int test_shell_rtk_compression(void)
     sc_json_destroy(args);
     args = nullptr;
 
+    failures += sc_test_expect_status("shell allowed command config",
+                              sc_config_set_prop(&config,
+                                                 sc_str_from_cstr("autonomy.allowed_commands"),
+                                                 sc_str_from_cstr("[\"echo\"]")),
+                              SC_OK);
+    failures += sc_test_expect_status("shell composition parse",
+                              parse_args("{\"command\":\"echo allowed; date\"}", &args),
+                              SC_OK);
+    failures += sc_test_expect_status("shell composition denied",
+                              sc_tool_invoke(shell, MAKE_CALL(args), sc_allocator_heap(), &result),
+                              SC_ERR_SECURITY_DENIED);
+    sc_json_destroy(args);
+    args = nullptr;
+    failures += sc_test_expect_status("shell allowed command restore",
+                              sc_config_set_prop(&config,
+                                                 sc_str_from_cstr("autonomy.allowed_commands"),
+                                                 sc_str_from_cstr("[]")),
+                              SC_OK);
+
     failures += sc_test_expect_status("rtk re-enable", sc_config_set_prop(&config, sc_str_from_cstr("tools.rtk.enabled"), sc_str_from_cstr("true")), SC_OK);
     failures += sc_test_expect_status("rtk missing command", sc_config_set_prop(&config, sc_str_from_cstr("tools.rtk.command"), sc_str_from_cstr("/tmp/sc-missing-rtk")), SC_OK);
     written = snprintf(command_json, sizeof(command_json), "{\"command\":\"cat %s\"}", input.ptr);

@@ -721,6 +721,7 @@ static sc_status compatible_async_schedule(compatible_async_state *state,
                 10000 :
                 state->options.timeout_ms,
             .follow_location = false,
+            .allow_private_network = state->options.allow_loopback,
             .on_chunk = state->streaming ? compatible_async_stream_chunk : nullptr,
             .chunk_user_data = state,
         };

@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -139,6 +141,38 @@ def run_static(tools_dir: Path, source_dir: Path) -> int:
     return run([sys.executable, str(clang_tidy)])
 
 
+def run_docs(tools_dir: Path, source_dir: Path) -> int:
+    generator = tools_dir / "gen_config_schema.py"
+    with tempfile.TemporaryDirectory(prefix="smolclaw-docs-") as temp:
+        temp_dir = Path(temp)
+        generated_c = temp_dir / "sc_config_schema.c"
+        generated_h = temp_dir / "sc_config_schema.h"
+        rc = run(
+            [
+                sys.executable,
+                str(generator),
+                str(source_dir / "schema" / "fields.yaml"),
+                str(generated_c),
+                str(generated_h),
+            ]
+        )
+        if rc != 0:
+            return rc
+        expected_c = source_dir / "src" / "config" / "sc_config_schema.c"
+        expected_h = source_dir / "include" / "sc" / "sc_config_schema.h"
+        if generated_c.read_bytes() != expected_c.read_bytes() or generated_h.read_bytes() != expected_h.read_bytes():
+            return fail("generated config schema is stale; regenerate checked-in outputs")
+    deps_text = (source_dir / "cmake" / "deps.cmake").read_text(encoding="utf-8")
+    inventory_text = (source_dir / "docs" / "dependency-inventory.md").read_text(encoding="utf-8")
+    revisions = re.findall(r'set\((SC_[A-Z0-9_]+_TAG) "([0-9a-f]{40})"', deps_text)
+    if len(revisions) < 13:
+        return fail("GitHub dependency revisions must be immutable 40-character commits")
+    for name, revision in revisions:
+        if name not in inventory_text or revision not in inventory_text:
+            return fail(f"dependency inventory is missing {name} at {revision}")
+    return 0
+
+
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Run SmolClaw validation modes.")
@@ -164,6 +198,8 @@ def main(argv: list[str]) -> int:
         )
     if args.mode == "static":
         return run_static(tools_dir, source_dir)
+    if args.mode == "docs":
+        return run_docs(tools_dir, source_dir)
     if args.mode == "all":
         steps = (
             lambda: configure_build_test(source_dir, build_dir, []),
@@ -171,6 +207,7 @@ def main(argv: list[str]) -> int:
             lambda: configure_build_test(
                 source_dir, Path(f"{build_dir}-sanitizer"), ["-DSC_SANITIZERS=ON"]
             ),
+            lambda: run_docs(tools_dir, source_dir),
         )
         for step in steps:
             rc = step()

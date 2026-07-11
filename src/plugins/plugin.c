@@ -820,12 +820,18 @@ void sc_plugin_host_destroy(sc_plugin_host *host)
     if (host == nullptr) {
         return;
     }
+    for (size_t i = 0; i < host->loaded_plugins.inner.len; i += 1) {
+        const sc_plugin *plugin = sc_ptr_vec_at(&host->loaded_plugins, i);
+        if (plugin != nullptr && plugin->active_refs > 0) {
+            /* Adapters borrow plugin code and state; the host must outlive every adapter. */
+            return;
+        }
+    }
     while (host->loaded_plugins.inner.len > 0) {
         sc_plugin *plugin = sc_ptr_vec_at(&host->loaded_plugins, 0);
         if (plugin == nullptr) {
             break;
         }
-        plugin->active_refs = 0;
         (void)sc_plugin_unload(plugin);
     }
     sc_vec_clear(&host->provider_entries);
@@ -859,6 +865,9 @@ sc_status sc_plugin_load_path(sc_plugin_host *host, const sc_plugin_manifest *ma
     status = validate_plugin_path(host, manifest);
     if (!sc_status_is_ok(status)) {
         return status;
+    }
+    if ((manifest->requested_permissions & ~host->allowed_permissions) != 0) {
+        return sc_status_security_denied("sc.plugin_loader.permission_denied");
     }
     if ((manifest->capabilities & SC_PLUGIN_CAP_WASM) != 0 ||
         path_has_extension(sc_string_as_str(&manifest->artifact_path), sc_str_from_cstr(".wasm"))) {

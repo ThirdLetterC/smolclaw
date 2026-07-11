@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -25,9 +27,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
 
       - name: Install build dependencies
         run: |
@@ -90,14 +95,40 @@ jobs:
             echo "tarball=dist/${package_name}.tar.gz"
             echo "zipball=dist/${package_name}.zip"
             echo "checksums=dist/SHA256SUMS.txt"
+            echo "package_dir=${package_dir}"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: ${{ steps.package.outputs.package_dir }}
+          format: spdx-json
+          output-file: dist/sbom.spdx.json
+
+      - name: Finalize checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum "${{ steps.package.outputs.package_name }}.tar.gz" \
+                     "${{ steps.package.outputs.package_name }}.zip" \
+                     sbom.spdx.json > SHA256SUMS.txt
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            ${{ steps.package.outputs.tarball }}
+            ${{ steps.package.outputs.zipball }}
+            ${{ steps.package.outputs.checksums }}
+            dist/sbom.spdx.json
+
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             ${{ steps.package.outputs.tarball }}
             ${{ steps.package.outputs.zipball }}
             ${{ steps.package.outputs.checksums }}
+            dist/sbom.spdx.json
           fail_on_unmatched_files: true
           generate_release_notes: true

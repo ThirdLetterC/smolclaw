@@ -184,6 +184,13 @@ sc_status sc_workspace_resolve(const sc_security_policy *policy,
                                bool must_exist,
                                sc_allocator *alloc,
                                sc_string *out);
+/* Opens the validated parent directory without following path-component symlinks.
+ * On success, the caller owns out_parent_fd and must close it; out_leaf is initialized. */
+sc_status sc_workspace_open_parent(const sc_security_policy *policy,
+                                   sc_str input_path,
+                                   sc_allocator *alloc,
+                                   int *out_parent_fd,
+                                   sc_string *out_leaf);
 sc_status sc_security_validate_path(const sc_security_policy *policy, sc_str input_path, bool must_exist);
 
 sc_status sc_security_validate_url(const sc_security_policy *policy, sc_str url_text);

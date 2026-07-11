@@ -8,7 +8,10 @@
 #include "sc/time.h"
 
 #include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
+#include <stdckdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -70,7 +73,9 @@ struct sc_gateway_server {
     size_t max_body_bytes;
     size_t rate_limit;
     size_t request_count;
+    time_t request_window_started;
     size_t pairing_attempt_count;
+    time_t pairing_window_started;
     size_t pairing_attempt_limit;
     uint64_t pairing_ttl_secs;
     time_t pairing_created_at;
@@ -163,13 +168,9 @@ static sc_status static_find_root(sc_gateway_server *server,
                                   sc_str *relative_out);
 static bool static_relative_path_safe(sc_str relative);
 static bool static_path_has_encoded_traversal(sc_str value);
-static sc_status static_build_filesystem_path(sc_allocator *alloc,
-                                              const gateway_static_root *root,
-                                              sc_str relative,
-                                              sc_string *out);
-static sc_status static_validate_no_symlink(sc_str path);
+static sc_status static_open_file(const gateway_static_root *root, sc_str relative, int *out_fd);
 static sc_str static_content_type(sc_str path);
-static sc_status static_read_file(sc_allocator *alloc, sc_str path, sc_string *out);
+static sc_status static_read_fd(sc_allocator *alloc, int fd, size_t max_bytes, sc_string *out);
 static bool event_visible_to_session(const gateway_event *event, sc_str session_id);
 static sc_str event_field_session_id(const sc_observer_event *event);
 static sc_status gateway_events_push(sc_gateway_server *server, gateway_event *event);
@@ -188,9 +189,10 @@ static void gateway_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *
 static void gateway_write_cb(uv_write_t *req, int status);
 static void gateway_client_close_cb(uv_handle_t *handle);
 static void gateway_read_buf_free(gateway_client *client, const uv_buf_t *buf);
-static bool gateway_http_request_complete(sc_str raw);
-static size_t gateway_http_content_length(sc_str raw);
+static bool gateway_http_request_complete(sc_str raw, bool *invalid);
+static bool gateway_http_content_length(sc_str raw, size_t *out);
 static const char *gateway_find_header_end(sc_str raw);
+static const char *gateway_find_bytes(sc_str raw, size_t start, const char *needle, size_t needle_len);
 
 static const sc_observer_vtab gateway_observer_vtab = {
     .struct_size = sizeof(sc_observer_vtab),
@@ -413,7 +415,9 @@ sc_status sc_gateway_server_new(sc_allocator *alloc,
         .public_bind_enabled = options->public_bind_enabled,
         .max_body_bytes = options->max_body_bytes == 0 ? 65536 : options->max_body_bytes,
         .rate_limit = options->rate_limit == 0 ? 1024 : options->rate_limit,
+        .request_window_started = time(nullptr),
         .pairing_attempt_limit = options->pairing_attempt_limit == 0 ? 5 : options->pairing_attempt_limit,
+        .pairing_window_started = time(nullptr),
         .pairing_ttl_secs = options->pairing_ttl_secs == 0 ? 300 : options->pairing_ttl_secs,
         .pairing_created_at = time(nullptr),
         .timeout_ms = options->timeout_ms == 0 ? 30000 : options->timeout_ms,
@@ -896,6 +900,9 @@ static sc_status enforce_gates(sc_gateway_server *server,
                                sc_allocator *alloc,
                                sc_gateway_response *out)
 {
+    constexpr time_t rate_window_seconds = 60;
+    time_t now = time(nullptr);
+
     if (server->timeout_ms <= 0) {
         return response_set(out, alloc, 504, sc_str_from_cstr("gateway timeout"));
     }
@@ -912,11 +919,19 @@ static sc_status enforce_gates(sc_gateway_server *server,
         return response_set(out, alloc, 401, sc_str_from_cstr("unauthorized"));
     }
     if (route->descriptor.auth_mode == SC_GATEWAY_AUTH_PAIRING) {
+        if (now < server->pairing_window_started || now - server->pairing_window_started >= rate_window_seconds) {
+            server->pairing_window_started = now;
+            server->pairing_attempt_count = 0;
+        }
         if (server->pairing_attempt_count >= server->pairing_attempt_limit) {
             return response_set(out, alloc, 429, sc_str_from_cstr("pairing rate limit exceeded"));
         }
         server->pairing_attempt_count += 1;
     } else {
+        if (now < server->request_window_started || now - server->request_window_started >= rate_window_seconds) {
+            server->request_window_started = now;
+            server->request_count = 0;
+        }
         if (server->request_count >= server->rate_limit) {
             return response_set(out, alloc, 429, sc_str_from_cstr("rate limit exceeded"));
         }
@@ -1185,9 +1200,9 @@ static sc_status handle_static(sc_gateway_server *server, const sc_gateway_reque
 {
     const gateway_static_root *root = nullptr;
     sc_str relative = {0};
-    sc_string path = {0};
     sc_string body = {0};
     sc_status status = sc_status_ok();
+    int fd = -1;
 
     status = static_find_root(server, request->path, &root, &relative);
     if (!sc_status_is_ok(status)) {
@@ -1197,29 +1212,26 @@ static sc_status handle_static(sc_gateway_server *server, const sc_gateway_reque
     if (!static_relative_path_safe(relative)) {
         return response_set(out, alloc, 403, sc_str_from_cstr("forbidden"));
     }
-    status = static_build_filesystem_path(alloc, root, relative, &path);
-    if (sc_status_is_ok(status)) {
-        status = static_validate_no_symlink(sc_string_as_str(&path));
-    }
+    status = static_open_file(root, relative, &fd);
     if (status.code == SC_ERR_SECURITY_DENIED) {
         sc_status_clear(&status);
-        sc_string_clear(&path);
         return response_set(out, alloc, 403, sc_str_from_cstr("forbidden"));
     }
     if (sc_status_is_ok(status)) {
-        status = static_read_file(alloc, sc_string_as_str(&path), &body);
+        status = static_read_fd(alloc, fd, server->max_body_bytes, &body);
+    }
+    if (fd >= 0) {
+        (void)close(fd);
     }
     if (status.code == SC_ERR_IO) {
         sc_status_clear(&status);
         sc_string_clear(&body);
-        sc_string_clear(&path);
         return response_set(out, alloc, 404, sc_str_from_cstr("not found"));
     }
     if (sc_status_is_ok(status)) {
-        status = response_set_typed(out, alloc, 200, sc_string_as_str(&body), static_content_type(sc_string_as_str(&path)));
+        status = response_set_typed(out, alloc, 200, sc_string_as_str(&body), static_content_type(relative));
     }
     sc_string_clear(&body);
-    sc_string_clear(&path);
     return status;
 }
 
@@ -1396,9 +1408,12 @@ static sc_status parse_http_request(sc_str raw, sc_gateway_request *out)
     if (out == nullptr || raw.ptr == nullptr || raw.len == 0) {
         return sc_status_invalid_argument("sc.gateway_http.parse_invalid_argument");
     }
-    line_end = strstr(raw.ptr, "\r\n");
-    headers_end = strstr(raw.ptr, "\r\n\r\n");
-    if (line_end == nullptr || headers_end == nullptr || line_end > raw.ptr + raw.len || headers_end > raw.ptr + raw.len) {
+    if (memchr(raw.ptr, '\0', raw.len) != nullptr) {
+        return sc_status_parse("sc.gateway_http.embedded_nul");
+    }
+    line_end = gateway_find_bytes(raw, 0, "\r\n", 2);
+    headers_end = gateway_find_bytes(raw, 0, "\r\n\r\n", 4);
+    if (line_end == nullptr || headers_end == nullptr) {
         return sc_status_parse("sc.gateway_http.invalid_request");
     }
     request_line = sc_str_from_parts(raw.ptr, (size_t)(line_end - raw.ptr));
@@ -1434,7 +1449,8 @@ static sc_status parse_http_request(sc_str raw, sc_gateway_request *out)
         return sc_status_parse("sc.gateway_http.unsupported_method");
     }
     for (const char *cursor = line_end + 2; cursor < headers_end;) {
-        const char *next = strstr(cursor, "\r\n");
+        size_t offset = (size_t)(cursor - raw.ptr);
+        const char *next = gateway_find_bytes(raw, offset, "\r\n", 2);
         const char *colon = nullptr;
         if (next == nullptr || next > headers_end) {
             break;
@@ -1743,46 +1759,62 @@ static bool static_path_has_encoded_traversal(sc_str value)
     return false;
 }
 
-static sc_status static_build_filesystem_path(sc_allocator *alloc,
-                                              const gateway_static_root *root,
-                                              sc_str relative,
-                                              sc_string *out)
+static sc_status static_open_file(const gateway_static_root *root, sc_str relative, int *out_fd)
 {
-    sc_string_builder builder = {0};
-    sc_status status = sc_status_ok();
+    constexpr size_t max_segment_len = 255;
     sc_str filesystem_root = root == nullptr ? sc_str_from_cstr("") : sc_string_as_str(&root->filesystem_root);
-
-    if (out == nullptr || filesystem_root.len == 0 || relative.len == 0) {
-        return sc_status_invalid_argument("sc.gateway_static.path_invalid_argument");
-    }
-    sc_string_builder_init(&builder, alloc);
-    status = sc_string_builder_append(&builder, filesystem_root);
-    if (sc_status_is_ok(status) && filesystem_root.ptr[filesystem_root.len - 1] != '/') {
-        status = sc_string_builder_append_cstr(&builder, "/");
-    }
-    if (sc_status_is_ok(status)) {
-        status = sc_string_builder_append(&builder, relative);
-    }
-    if (sc_status_is_ok(status)) {
-        status = sc_string_builder_finish(&builder, out);
-    } else {
-        sc_string_builder_clear(&builder);
-    }
-    return status;
-}
-
-static sc_status static_validate_no_symlink(sc_str path)
-{
     struct stat st = {0};
-    if (path.ptr == nullptr || path.len == 0) {
-        return sc_status_invalid_argument("sc.gateway_static.symlink_invalid_argument");
+    int parent_fd = -1;
+    int child_fd = -1;
+    size_t start = 0;
+
+    if (out_fd == nullptr || filesystem_root.ptr == nullptr || filesystem_root.len == 0 ||
+        relative.ptr == nullptr || relative.len == 0) {
+        return sc_status_invalid_argument("sc.gateway_static.open_invalid_argument");
     }
-    if (lstat(path.ptr, &st) != 0) {
-        return sc_status_io("sc.gateway_static.not_found");
+    *out_fd = -1;
+    parent_fd = open(filesystem_root.ptr, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (parent_fd < 0) {
+        return sc_status_io("sc.gateway_static.root_open_failed");
     }
-    if (S_ISLNK(st.st_mode) || !S_ISREG(st.st_mode)) {
+    while (start < relative.len) {
+        char segment[256] = {0};
+        size_t end = start;
+        size_t segment_len = 0;
+        bool final = false;
+        int flags = O_RDONLY | O_CLOEXEC | O_NOFOLLOW;
+
+        while (end < relative.len && relative.ptr[end] != '/') {
+            end += 1;
+        }
+        segment_len = end - start;
+        final = end == relative.len;
+        if (segment_len == 0 || segment_len > max_segment_len) {
+            (void)close(parent_fd);
+            return sc_status_security_denied("sc.gateway_static.unsafe_path");
+        }
+        (void)memcpy(segment, relative.ptr + start, segment_len);
+        if (!final) {
+            flags |= O_DIRECTORY;
+        }
+        child_fd = openat(parent_fd, segment, flags);
+        if (child_fd < 0) {
+            int saved_errno = errno;
+            (void)close(parent_fd);
+            return saved_errno == ELOOP || saved_errno == ENOTDIR
+                       ? sc_status_security_denied("sc.gateway_static.unsafe_path")
+                       : sc_status_io("sc.gateway_static.not_found");
+        }
+        (void)close(parent_fd);
+        parent_fd = child_fd;
+        child_fd = -1;
+        start = end + 1;
+    }
+    if (fstat(parent_fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+        (void)close(parent_fd);
         return sc_status_security_denied("sc.gateway_static.unsafe_path");
     }
+    *out_fd = parent_fd;
     return sc_status_ok();
 }
 
@@ -1809,56 +1841,43 @@ static sc_str static_content_type(sc_str path)
     return sc_str_from_cstr("application/octet-stream");
 }
 
-static sc_status static_read_file(sc_allocator *alloc, sc_str path, sc_string *out)
+static sc_status static_read_fd(sc_allocator *alloc, int fd, size_t max_bytes, sc_string *out)
 {
-    FILE *file = nullptr;
-    long size = 0;
-    char *buffer = nullptr;
-    size_t read_count = 0;
-    sc_status status = sc_status_ok();
+    struct stat st = {0};
+    sc_string text = {0};
+    size_t allocation_size = 0;
+    size_t offset = 0;
 
-    if (out == nullptr || path.ptr == nullptr) {
+    if (out == nullptr || fd < 0) {
         return sc_status_invalid_argument("sc.gateway_static.read_invalid_argument");
     }
-    file = fopen(path.ptr, "rb");
-    if (file == nullptr) {
-        status = sc_status_io("sc.gateway_static.open_failed");
-        goto cleanup;
+    if (fstat(fd, &st) != 0 || st.st_size < 0 || (uintmax_t)st.st_size > (uintmax_t)max_bytes) {
+        return st.st_size > 0 ? sc_status_http("sc.gateway_static.response_too_large")
+                              : sc_status_io("sc.gateway_static.stat_failed");
     }
-    if (fseek(file, 0, SEEK_END) != 0) {
-        status = sc_status_io("sc.gateway_static.seek_failed");
-        goto cleanup;
+    if (ckd_add(&allocation_size, (size_t)st.st_size, 1U)) {
+        return sc_status_invalid_argument("sc.gateway_static.size_overflow");
     }
-    size = ftell(file);
-    if (size < 0) {
-        status = sc_status_io("sc.gateway_static.tell_failed");
-        goto cleanup;
+    text.ptr = sc_alloc(alloc, allocation_size, _Alignof(char));
+    if (text.ptr == nullptr) {
+        return sc_status_no_memory();
     }
-    if (fseek(file, 0, SEEK_SET) != 0) {
-        status = sc_status_io("sc.gateway_static.seek_failed");
-        goto cleanup;
+    text.alloc = alloc;
+    while (offset < (size_t)st.st_size) {
+        ssize_t count = read(fd, text.ptr + offset, (size_t)st.st_size - offset);
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        if (count <= 0) {
+            sc_string_clear(&text);
+            return sc_status_io("sc.gateway_static.read_failed");
+        }
+        offset += (size_t)count;
     }
-    buffer = sc_alloc(alloc, (size_t)size + 1, _Alignof(char));
-    if (buffer == nullptr) {
-        status = sc_status_no_memory();
-        goto cleanup;
-    }
-    read_count = fread(buffer, 1, (size_t)size, file);
-    if (read_count != (size_t)size) {
-        status = sc_status_io("sc.gateway_static.read_failed");
-        goto cleanup;
-    }
-    buffer[size] = '\0';
-    status = sc_string_from_str(alloc, sc_str_from_parts(buffer, (size_t)size), out);
-
-cleanup:
-    if (buffer != nullptr) {
-        sc_free(alloc, buffer, (size_t)(size < 0 ? 0 : size) + 1, _Alignof(char));
-    }
-    if (file != nullptr && fclose(file) != 0 && sc_status_is_ok(status)) {
-        status = sc_status_io("sc.gateway_static.close_failed");
-    }
-    return status;
+    text.ptr[offset] = '\0';
+    text.len = offset;
+    *out = text;
+    return sc_status_ok();
 }
 
 static bool event_visible_to_session(const gateway_event *event, sc_str session_id)
@@ -2096,10 +2115,14 @@ static void gateway_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_
 
 static void gateway_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf)
 {
+    constexpr size_t max_header_bytes = 16U * 1024U;
     gateway_client *client = stream == nullptr ? nullptr : stream->data;
     sc_status status = sc_status_ok();
     sc_string response = {0};
     gateway_write *write_req = nullptr;
+    size_t max_request_bytes = 0;
+    size_t next_request_bytes = 0;
+    bool invalid_request = false;
 
     if (client == nullptr) {
         return;
@@ -2110,11 +2133,19 @@ static void gateway_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *
         return;
     }
     if (nread > 0 && buf != nullptr && buf->base != nullptr) {
-        status = sc_bytes_append(&client->request, sc_buf_from_parts(buf->base, (size_t)nread));
+        if (ckd_add(&max_request_bytes, client->server->max_body_bytes, max_header_bytes) ||
+            ckd_add(&next_request_bytes, client->request.len, (size_t)nread) ||
+            next_request_bytes > max_request_bytes) {
+            status = sc_status_http("sc.gateway_http.request_too_large");
+        } else {
+            status = sc_bytes_append(&client->request, sc_buf_from_parts(buf->base, (size_t)nread));
+        }
     }
     gateway_read_buf_free(client, buf);
-    if (!sc_status_is_ok(status) || !gateway_http_request_complete(sc_str_from_parts((const char *)client->request.ptr, client->request.len))) {
-        if (!sc_status_is_ok(status)) {
+    if (!sc_status_is_ok(status) ||
+        !gateway_http_request_complete(sc_str_from_parts((const char *)client->request.ptr, client->request.len),
+                                       &invalid_request)) {
+        if (!sc_status_is_ok(status) || invalid_request) {
             uv_close((uv_handle_t *)&client->handle, gateway_client_close_cb);
         }
         return;
@@ -2179,41 +2210,66 @@ static void gateway_client_close_cb(uv_handle_t *handle)
     sc_free(client->server->alloc, client, sizeof(*client), _Alignof(gateway_client));
 }
 
-static bool gateway_http_request_complete(sc_str raw)
+static bool gateway_http_request_complete(sc_str raw, bool *invalid)
 {
     const char *headers_end = gateway_find_header_end(raw);
-    size_t header_bytes;
-    size_t content_length;
+    size_t header_bytes = 0;
+    size_t content_length = 0;
+    size_t total = 0;
+
+    if (invalid != nullptr) {
+        *invalid = false;
+    }
 
     if (headers_end == nullptr) {
         return false;
     }
     header_bytes = (size_t)(headers_end - raw.ptr) + 4U;
-    content_length = gateway_http_content_length(raw);
-    return raw.len >= header_bytes + content_length;
+    if (!gateway_http_content_length(raw, &content_length) || ckd_add(&total, header_bytes, content_length)) {
+        if (invalid != nullptr) {
+            *invalid = true;
+        }
+        return false;
+    }
+    return raw.len >= total;
 }
 
-static size_t gateway_http_content_length(sc_str raw)
+static bool gateway_http_content_length(sc_str raw, size_t *out)
 {
     static const char header[] = "Content-Length:";
     const char *headers_end = gateway_find_header_end(raw);
     size_t limit = headers_end == nullptr ? raw.len : (size_t)(headers_end - raw.ptr);
 
+    if (out == nullptr) {
+        return false;
+    }
+    *out = 0;
     for (size_t i = 0; i + sizeof(header) - 1 <= limit; i += 1) {
         if (memcmp(raw.ptr + i, header, sizeof(header) - 1) == 0) {
             size_t cursor = i + sizeof(header) - 1;
             size_t value = 0;
+            bool saw_digit = false;
             while (cursor < limit && (raw.ptr[cursor] == ' ' || raw.ptr[cursor] == '\t')) {
                 cursor += 1;
             }
             while (cursor < limit && raw.ptr[cursor] >= '0' && raw.ptr[cursor] <= '9') {
-                value = (value * 10U) + (size_t)(raw.ptr[cursor] - '0');
+                size_t next = 0;
+                if (ckd_mul(&next, value, 10U) ||
+                    ckd_add(&next, next, (size_t)(raw.ptr[cursor] - '0'))) {
+                    return false;
+                }
+                value = next;
+                saw_digit = true;
                 cursor += 1;
             }
-            return value;
+            if (!saw_digit || (cursor < limit && raw.ptr[cursor] != '\r' && raw.ptr[cursor] != ' ' && raw.ptr[cursor] != '\t')) {
+                return false;
+            }
+            *out = value;
+            return true;
         }
     }
-    return 0;
+    return true;
 }
 
 static const char *gateway_find_header_end(sc_str raw)
@@ -2223,6 +2279,20 @@ static const char *gateway_find_header_end(sc_str raw)
     }
     for (size_t i = 0; i + 3 < raw.len; i += 1) {
         if (raw.ptr[i] == '\r' && raw.ptr[i + 1] == '\n' && raw.ptr[i + 2] == '\r' && raw.ptr[i + 3] == '\n') {
+            return raw.ptr + i;
+        }
+    }
+    return nullptr;
+}
+
+static const char *gateway_find_bytes(sc_str raw, size_t start, const char *needle, size_t needle_len)
+{
+    if (raw.ptr == nullptr || needle == nullptr || needle_len == 0 || start > raw.len ||
+        raw.len - start < needle_len) {
+        return nullptr;
+    }
+    for (size_t i = start; i <= raw.len - needle_len; i += 1) {
+        if (memcmp(raw.ptr + i, needle, needle_len) == 0) {
             return raw.ptr + i;
         }
     }

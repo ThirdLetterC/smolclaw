@@ -28,6 +28,7 @@ option(SC_CHANNEL_RABBITMQ "Build RabbitMQ channel." OFF)
 option(SC_CHANNEL_MAIL "Build mail channel." OFF)
 
 option(SC_SANITIZERS "Enable sanitizer build flags." OFF)
+option(SC_FUZZING "Build coverage-guided libFuzzer targets." OFF)
 option(SC_HARDENING "Enable production hardening flags." ON)
 
 if(SC_ENABLE_WASM_PLUGINS AND NOT SC_ENABLE_PLUGINS)

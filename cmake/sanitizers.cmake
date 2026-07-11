@@ -6,8 +6,12 @@ function(sc_apply_sanitizers target)
     endif()
 
     if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+        set(sc_sanitizer_set "address,undefined")
+        if(NOT APPLE)
+            string(APPEND sc_sanitizer_set ",leak")
+        endif()
         target_compile_options("${target}" PRIVATE
-            -fsanitize=address,undefined,leak
+            "-fsanitize=${sc_sanitizer_set}"
             -fno-omit-frame-pointer
         )
         if(CMAKE_C_COMPILER_ID MATCHES "Clang")
@@ -22,7 +26,7 @@ function(sc_apply_sanitizers target)
             endif()
         endif()
         target_link_options("${target}" PRIVATE
-            -fsanitize=address,undefined,leak
+            "-fsanitize=${sc_sanitizer_set}"
         )
     else()
         message(WARNING "SC_SANITIZERS is not configured for ${CMAKE_C_COMPILER_ID}.")

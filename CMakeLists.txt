@@ -180,6 +180,9 @@ target_include_directories(sc_core
         "${CMAKE_CURRENT_BINARY_DIR}/include"
 )
 target_compile_definitions(sc_core PUBLIC _POSIX_C_SOURCE=200809L)
+if(APPLE)
+    target_compile_definitions(sc_core PUBLIC _DARWIN_C_SOURCE)
+endif()
 if(SC_HAVE_LINUX_LANDLOCK)
     target_compile_definitions(sc_core PUBLIC SC_HAVE_LINUX_LANDLOCK=1)
 endif()
@@ -201,6 +204,17 @@ endif()
 sc_apply_warnings(sc_core)
 sc_apply_sanitizers(sc_core)
 sc_apply_hardening(sc_core)
+
+if(SC_FUZZING)
+    if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "SC_FUZZING requires Clang with libFuzzer support")
+    endif()
+    target_compile_options(sc_core PRIVATE -fsanitize=fuzzer-no-link,address,undefined)
+    add_executable(sc_fuzz_url tests/fuzz/fuzz_url.c)
+    target_link_libraries(sc_fuzz_url PRIVATE sc_core)
+    target_compile_options(sc_fuzz_url PRIVATE -fsanitize=fuzzer-no-link,address,undefined)
+    target_link_options(sc_fuzz_url PRIVATE -fsanitize=fuzzer,address,undefined)
+endif()
 if(SC_ENABLE_THIRD_PARTY_DEPS AND TARGET sc_external_deps)
     add_dependencies(sc_core sc_external_deps)
 endif()
@@ -410,7 +424,8 @@ target_link_libraries(test_public_headers_cpp PRIVATE sc_core sc_test_support)
 sc_apply_sanitizers(test_public_headers_cpp)
 sc_apply_hardening(test_public_headers_cpp)
 
-if(SC_ENABLE_THIRD_PARTY_DEPS AND EXISTS "${SC_THIRD_PARTY_ROOT}")
+if(SC_ENABLE_THIRD_PARTY_DEPS AND EXISTS "${SC_THIRD_PARTY_ROOT}" AND
+   TARGET sc_tp_hiredis AND TARGET sc_tp_rabbitmq)
     add_executable(test_third_party_deps
         tests/unit/test_third_party_deps.c
     )
@@ -489,7 +504,7 @@ sc_apply_hardening(test_tools)
 add_executable(test_runtime
     tests/unit/test_runtime.c
 )
-target_link_libraries(test_runtime PRIVATE sc_core sc_test_support)
+target_link_libraries(test_runtime PRIVATE sc_core sc_test_support SC::libuv)
 sc_apply_warnings(test_runtime)
 sc_apply_sanitizers(test_runtime)
 sc_apply_hardening(test_runtime)

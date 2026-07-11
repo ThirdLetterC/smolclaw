@@ -11,7 +11,7 @@ on:
       - "CMakePresets.json"
       - "cmake/**"
       - "tests/**"
-      - "tools/validation/**"
+      - "tools/**"
       - ".github/workflows/test.yml"
   push:
     branches:
@@ -26,7 +26,7 @@ on:
       - "CMakePresets.json"
       - "cmake/**"
       - "tests/**"
-      - "tools/validation/**"
+      - "tools/**"
       - ".github/workflows/test.yml"
 
 concurrency:
@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install build dependencies
         run: |
@@ -66,3 +66,36 @@ jobs:
 
       - name: Run tests
         run: make test
+
+  sanitizer:
+    name: ASan, UBSan, and LSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    env:
+      CC: clang
+      CXX: clang++
+      CTEST_OUTPUT_ON_FAILURE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake git libcurl4-openssl-dev libsodium-dev \
+            libsqlite3-dev libuv1-dev ninja-build pkg-config zlib1g-dev
+
+      - name: Run sanitizer tests
+        run: make sanitizer
+
+      - name: Build URL fuzz target
+        run: |
+          cmake -S . -B build/fuzz -DCMAKE_BUILD_TYPE=Debug \
+            -DSC_DEPS_PROVIDER=system -DSC_FUZZING=ON -DSC_HARDENING=OFF
+          cmake --build build/fuzz --target sc_fuzz_url --parallel "$(nproc)"
+
+      - name: Run URL fuzz smoke
+        run: build/fuzz/sc_fuzz_url -max_total_time=30 -max_len=4096

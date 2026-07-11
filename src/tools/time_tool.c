@@ -82,7 +82,7 @@ static sc_status time_spec(void *impl, sc_tool_spec *out)
 static sc_status time_invoke(void *impl, const sc_tool_call *call, sc_allocator *alloc, sc_tool_result *out)
 {
     time_tool *tool = impl;
-    sc_str timezone = sc_str_from_cstr("UTC");
+    sc_str timezone_name = sc_str_from_cstr("UTC");
     time_t now;
     struct tm tm_utc = {0};
     char text[128] = {0};
@@ -93,11 +93,11 @@ static sc_status time_invoke(void *impl, const sc_tool_call *call, sc_allocator 
     }
     status = sc_tool_check_cancelled(&tool->base, call);
     if (sc_status_is_ok(status)) {
-        (void)sc_tool_get_optional_string_arg(call, sc_str_from_cstr("timezone"), &timezone);
-        if (timezone.len == 0) {
-            timezone = sc_str_from_cstr("UTC");
+        (void)sc_tool_get_optional_string_arg(call, sc_str_from_cstr("timezone"), &timezone_name);
+        if (timezone_name.len == 0) {
+            timezone_name = sc_str_from_cstr("UTC");
         }
-        if (!timezone_is_utc(timezone)) {
+        if (!timezone_is_utc(timezone_name)) {
             status = sc_status_unsupported("sc.time_tool.timezone_unsupported");
         }
     }
@@ -126,8 +126,8 @@ static sc_status time_invoke(void *impl, const sc_tool_call *call, sc_allocator 
                                tm_utc.tm_hour,
                                tm_utc.tm_min,
                                tm_utc.tm_sec,
-                               (int)timezone.len,
-                               timezone.ptr);
+                               (int)timezone_name.len,
+                               timezone_name.ptr);
         if (written < 0 || (size_t)written >= sizeof(text)) {
             status = sc_status_invalid_argument("sc.time_tool.output_too_large");
         }
@@ -136,11 +136,11 @@ static sc_status time_invoke(void *impl, const sc_tool_call *call, sc_allocator 
         status = sc_tool_set_output(alloc, &tool->base, out, sc_str_from_cstr(text), true);
     }
     if (sc_status_is_ok(status)) {
-        status = sc_tool_record_receipt(&tool->base, sc_str_from_cstr("time"), timezone, sc_string_as_str(&out->output), true);
+        status = sc_tool_record_receipt(&tool->base, sc_str_from_cstr("time"), timezone_name, sc_string_as_str(&out->output), true);
     } else {
         (void)sc_tool_record_receipt_status(&tool->base,
                                             sc_str_from_cstr("time"),
-                                            timezone,
+                                            timezone_name,
                                             sc_str_from_cstr("error"),
                                             false,
                                             status);
@@ -160,11 +160,11 @@ static void time_destroy(void *impl)
     sc_free(alloc, tool, sizeof(*tool), _Alignof(time_tool));
 }
 
-static bool timezone_is_utc(sc_str timezone)
+static bool timezone_is_utc(sc_str timezone_name)
 {
-    return sc_str_equal(timezone, sc_str_from_cstr("UTC")) ||
-           sc_str_equal(timezone, sc_str_from_cstr("Etc/UTC")) ||
-           sc_str_equal(timezone, sc_str_from_cstr("Z")) ||
-           sc_str_equal(timezone, sc_str_from_cstr("+00:00")) ||
-           sc_str_equal(timezone, sc_str_from_cstr("-00:00"));
+    return sc_str_equal(timezone_name, sc_str_from_cstr("UTC")) ||
+           sc_str_equal(timezone_name, sc_str_from_cstr("Etc/UTC")) ||
+           sc_str_equal(timezone_name, sc_str_from_cstr("Z")) ||
+           sc_str_equal(timezone_name, sc_str_from_cstr("+00:00")) ||
+           sc_str_equal(timezone_name, sc_str_from_cstr("-00:00"));
 }

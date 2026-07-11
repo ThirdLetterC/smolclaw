@@ -189,7 +189,7 @@ static void acp_session_clear(acp_session *session)
     *session = (acp_session){0};
 }
 
-static acp_session *acp_session_find(sc_acp_server *server, sc_str id)
+[[maybe_unused]] static acp_session *acp_session_find(sc_acp_server *server, sc_str id)
 {
     if (server == nullptr || id.len == 0) {
         return nullptr;
@@ -226,7 +226,7 @@ static sc_status acp_session_remove(sc_acp_server *server, sc_str id)
     return sc_status_invalid_argument("sc.acp.session.not_found");
 }
 
-static void acp_evict_idle_sessions(sc_acp_server *server)
+[[maybe_unused]] static void acp_evict_idle_sessions(sc_acp_server *server)
 {
     time_t now;
     if (server == nullptr || server->idle_timeout_secs == 0) {

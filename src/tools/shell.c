@@ -205,9 +205,12 @@ static sc_status validate_shell_command(const shell_tool *tool, sc_str command)
                                            sc_str_from_cstr("autonomy.allowed_commands"),
                                            tool->base.alloc,
                                            &allowed_raw)) &&
-        allowed_raw.len > 2 &&
-        !json_array_contains(sc_string_as_str(&allowed_raw), sc_string_as_str(&basename))) {
-        status = sc_status_security_denied("sc.shell_tool.command_not_allowed");
+        allowed_raw.len > 2) {
+        if (command_has_shell_control(command)) {
+            status = sc_status_security_denied("sc.shell_tool.command_composition_denied");
+        } else if (!json_array_contains(sc_string_as_str(&allowed_raw), sc_string_as_str(&basename))) {
+            status = sc_status_security_denied("sc.shell_tool.command_not_allowed");
+        }
     }
     sc_string_clear(&basename);
     sc_string_clear(&allowed_raw);

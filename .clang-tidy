@@ -95,7 +95,7 @@ Checks: >
   -readability-avoid-return-with-void-value,
   -readability-avoid-unconditional-preprocessor-if,
   -readability-avoid-nested-conditional-operator
-WarningsAsErrors: ''
+WarningsAsErrors: '*'
 HeaderFilterRegex: ''
 FormatStyle: none
 ...

@@ -770,22 +770,30 @@ static int test_static_files(void)
 {
     int failures = 0;
     sc_string dir = {0};
+    sc_string outside_dir = {0};
     sc_gateway_server *server = nullptr;
     sc_gateway_response response = {0};
     sc_string raw_http = {0};
 
     failures += sc_test_expect_status("static temp dir", sc_test_make_temp_dir("gateway", &dir), SC_OK);
+    failures += sc_test_expect_status("static outside temp dir", sc_test_make_temp_dir("gateway-outside", &outside_dir), SC_OK);
 
     {
         char index_buf[256] = {0};
         char secret_buf[256] = {0};
         char link_buf[256] = {0};
+        char dir_link_buf[256] = {0};
+        char outside_file_buf[256] = {0};
         (void)snprintf(index_buf, sizeof(index_buf), "%s/index.html", dir.ptr);
         (void)snprintf(secret_buf, sizeof(secret_buf), "%s/secret.txt", dir.ptr);
         (void)snprintf(link_buf, sizeof(link_buf), "%s/link.txt", dir.ptr);
+        (void)snprintf(dir_link_buf, sizeof(dir_link_buf), "%s/outside", dir.ptr);
+        (void)snprintf(outside_file_buf, sizeof(outside_file_buf), "%s/private.txt", outside_dir.ptr);
         failures += sc_test_expect_true("write index", sc_test_write_cstr_file(index_buf, "<h1>ok</h1>") == 0);
         failures += sc_test_expect_true("write secret", sc_test_write_cstr_file(secret_buf, "secret") == 0);
         bool symlink_created = symlink(secret_buf, link_buf) == 0;
+        failures += sc_test_expect_true("write outside static file", sc_test_write_cstr_file(outside_file_buf, "private") == 0);
+        bool dir_symlink_created = symlink(outside_dir.ptr, dir_link_buf) == 0;
         failures += sc_test_expect_true("create static symlink", symlink_created);
         failures += sc_test_expect_status("static gateway",
                                   sc_gateway_server_new(sc_allocator_heap(),
@@ -844,6 +852,16 @@ static int test_static_files(void)
             failures += sc_test_expect_true("static symlink denied", response.status == 403 || response.status == 404);
             clear_response(&response);
         }
+        if (dir_symlink_created) {
+            failures += sc_test_expect_status("static intermediate symlink",
+                                      sc_gateway_handle_request(server,
+                                                                REQUEST(SC_GATEWAY_GET, "/assets/outside/private.txt", "", "", "", ""),
+                                                                sc_allocator_heap(),
+                                                                &response),
+                                      SC_OK);
+            failures += sc_test_expect_true("static intermediate symlink denied", response.status == 403);
+            clear_response(&response);
+        }
         failures += sc_test_expect_status("static http",
                                   sc_gateway_handle_http(server,
                                                          sc_str_from_cstr("GET /assets/index.html HTTP/1.1\r\n\r\n"),
@@ -852,6 +870,18 @@ static int test_static_files(void)
                                   SC_OK);
         failures += sc_test_expect_true("static http content type", strstr(raw_http.ptr, "Content-Type: text/html") != nullptr);
         sc_string_clear(&raw_http);
+        {
+            const char raw_without_nul[] = {'G','E','T',' ','/','a','s','s','e','t','s','/','i','n','d','e','x','.','h','t','m','l',' ','H','T','T','P','/','1','.','1','\r','\n','\r','\n'};
+            failures += sc_test_expect_status("static non-nul http span",
+                                      sc_gateway_handle_http(server,
+                                                             sc_str_from_parts(raw_without_nul, sizeof(raw_without_nul)),
+                                                             sc_allocator_heap(),
+                                                             &raw_http),
+                                      SC_OK);
+            sc_string_clear(&raw_http);
+        }
+        (void)unlink(dir_link_buf);
+        (void)unlink(outside_file_buf);
         (void)unlink(link_buf);
         (void)unlink(secret_buf);
         (void)unlink(index_buf);
@@ -860,7 +890,9 @@ static int test_static_files(void)
     clear_response(&response);
     sc_gateway_server_destroy(server);
     (void)rmdir(dir.ptr);
+    (void)rmdir(outside_dir.ptr);
     sc_string_clear(&dir);
+    sc_string_clear(&outside_dir);
     return failures;
 }
 

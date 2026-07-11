@@ -249,6 +249,12 @@ static int test_domain_policy(void)
     failures += sc_test_expect_status("private network blocked",
                               sc_security_validate_url(&policy, sc_str_from_cstr("http://127.0.0.1/")),
                               SC_ERR_SECURITY_DENIED);
+    failures += sc_test_expect_status("non-http scheme blocked",
+                              sc_security_validate_url(&policy, sc_str_from_cstr("file://example.com/etc/passwd")),
+                              SC_ERR_SECURITY_DENIED);
+    failures += sc_test_expect_status("carrier-grade nat blocked",
+                              sc_security_validate_url(&policy, sc_str_from_cstr("http://100.64.0.1/")),
+                              SC_ERR_SECURITY_DENIED);
     policy.sandbox_network = SC_SANDBOX_NETWORK_ALLOWED_DOMAINS;
     failures += sc_test_expect_status("sandbox domain denied",
                               sc_security_validate_sandbox_network(&policy, sc_str_from_cstr("https://other.test/")),

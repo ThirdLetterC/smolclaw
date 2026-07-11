@@ -46,10 +46,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           cache-dependency-glob: tools/uv.lock
@@ -76,3 +76,6 @@ jobs:
 
       - name: Run C static analysis
         run: SC_STATIC_SKIP_RUFF=1 make static PYTHON="uv run --project tools --locked python"
+
+      - name: Scan tracked content for secrets
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2

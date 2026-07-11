@@ -261,7 +261,7 @@ static sc_status webhook_check_replay(webhook_channel *webhook, sc_str nonce, in
 static sc_status webhook_check_rate_limit(webhook_channel *webhook);
 static sc_status webhook_remember_nonce(webhook_channel *webhook, sc_str nonce);
 static void webhook_forget_nonce_at(webhook_channel *webhook, size_t index);
-static sc_status webhook_store_media(sc_allocator *alloc,
+[[maybe_unused]] static sc_status webhook_store_media(sc_allocator *alloc,
                                      sc_str media_temp_dir,
                                      sc_str attachment_id,
                                      sc_str content_type,
