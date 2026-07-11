@@ -40,6 +40,7 @@ static const char default_en_ftl_cli[] =
     "cli.config.show.summary = Print effective configuration.\n"
     "cli.config.set.summary = Set a configuration value.\n"
     "cli.provider.summary = Manage providers.\n"
+    "cli.provider.set_key.summary = Replace the configured provider key from its environment variable.\n"
     "cli.memory.summary = Inspect memory backends.\n"
     "cli.cron.summary = Manage scheduled cron jobs.\n"
     "cli.cron.add.summary = Add or replace a cron job.\n"

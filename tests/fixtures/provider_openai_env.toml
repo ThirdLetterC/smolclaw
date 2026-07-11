@@ -1,0 +1,9 @@
+schema_version = 2
+
+[providers]
+fallback = "gpt"
+
+[providers.models.gpt]
+kind = "openai"
+model = "gpt-test"
+credential_env = "OPENAI_API_KEY"

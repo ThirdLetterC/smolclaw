@@ -25,6 +25,10 @@ static const sc_cli_command gateway_children[] = {
     {.name = "serve", .summary = "cli.gateway.serve.summary"},
 };
 
+static const sc_cli_command provider_children[] = {
+    {.name = "set-key", .summary = "cli.provider.set_key.summary"},
+};
+
 static const sc_cli_command cron_children[] = {
     {.name = "add", .summary = "cli.cron.add.summary"},
     {.name = "list", .summary = "cli.cron.list.summary"},
@@ -54,7 +58,7 @@ static const sc_cli_command root_children[] = {
     {.name = "init-config", .summary = "cli.init_config.summary"},
     {.name = "onboard", .summary = "cli.onboard.summary"},
     {.name = "config", .summary = "cli.config.summary", .children = config_children, .child_count = SC_ARRAY_LEN(config_children)},
-    {.name = "provider", .summary = "cli.provider.summary"},
+    {.name = "provider", .summary = "cli.provider.summary", .children = provider_children, .child_count = SC_ARRAY_LEN(provider_children)},
     {.name = "memory", .summary = "cli.memory.summary"},
     {.name = "cron", .summary = "cli.cron.summary", .children = cron_children, .child_count = SC_ARRAY_LEN(cron_children)},
     {.name = "gateway", .summary = "cli.gateway.summary", .children = gateway_children, .child_count = SC_ARRAY_LEN(gateway_children)},

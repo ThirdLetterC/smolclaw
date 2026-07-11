@@ -29,6 +29,7 @@ cli.config.preset.summary = Print a named configuration preset.
 cli.config.preset.default_posture.summary = Print the supervised default posture preset.
 cli.config.preset.yolo.summary = Print the explicit YOLO preset.
 cli.provider.summary = Manage providers.
+cli.provider.set_key.summary = Replace the configured provider key from its environment variable.
 cli.memory.summary = Inspect memory backends.
 cli.cron.summary = Manage scheduled cron jobs.
 cli.cron.add.summary = Add or replace a cron job.

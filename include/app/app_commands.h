@@ -21,4 +21,5 @@ int sc_app_run_init_config();
 int sc_app_run_memory();
 int sc_app_run_onboard(int argc, char **argv);
 int sc_app_run_provider();
+int sc_app_run_provider_set_key();
 int sc_app_run_service_command(const char *command, const char *argv0);

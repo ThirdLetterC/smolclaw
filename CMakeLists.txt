@@ -696,6 +696,15 @@ add_test(NAME cli_provider_config
 set_tests_properties(cli_provider_config PROPERTIES
     PASS_REGULAR_EXPRESSION "configured_provider: mock .*status: ok"
 )
+if(UNIX)
+    add_test(NAME cli_provider_set_key
+        COMMAND
+            /bin/sh -c "home=$(mktemp -d) && HOME=\"$home\" OPENAI_API_KEY=test-replacement-key SMOLCLAW_CONFIG='${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/provider_openai_env.toml' '$<TARGET_FILE:smolclaw>' provider set-key && test -s \"$home/.smolclaw/secrets\" && ! grep -q test-replacement-key \"$home/.smolclaw/secrets\""
+    )
+    set_tests_properties(cli_provider_set_key PROPERTIES
+        PASS_REGULAR_EXPRESSION "Updated encrypted API key for provider 'gpt' from environment variable OPENAI_API_KEY."
+    )
+endif()
 add_test(NAME cli_config COMMAND smolclaw config)
 set_tests_properties(cli_config PROPERTIES
     PASS_REGULAR_EXPRESSION "SmolClaw config"

@@ -302,6 +302,96 @@ cleanup:
     return status;
 }
 
+int sc_app_run_provider_set_key()
+{
+    sc_allocator *alloc = sc_allocator_heap();
+    const char *config_path = getenv("SMOLCLAW_CONFIG");
+    const char *env_value = nullptr;
+    sc_string config_body = {0};
+    sc_string provider = {0};
+    sc_string kind = {0};
+    sc_string credential_env = {0};
+    sc_string secret_path = {0};
+    sc_config config = {0};
+    sc_config_diag diag = {0};
+    sc_config_load_options load = {0};
+    sc_secret_store *secret_store = nullptr;
+    bool found = false;
+    sc_status status = sc_status_ok();
+    int exit_code = 1;
+
+    if (config_path == nullptr || config_path[0] == '\0') {
+        config_path = "smolclaw.toml";
+    }
+    status = sc_app_read_text_file(alloc, config_path, &config_body);
+    if (sc_status_is_ok(status)) {
+        load.explicit_file = (sc_config_source){
+            .kind = SC_CONFIG_SOURCE_EXPLICIT_FILE,
+            .source_path = sc_str_from_cstr(config_path),
+            .body = sc_string_as_str(&config_body),
+            .present = true,
+        };
+        status = sc_config_load(alloc, &load, &config, &diag);
+    }
+    if (sc_status_is_ok(status)) {
+        status = get_optional_config_prop(&config, "providers.fallback", alloc, &provider, &found);
+    }
+    if (sc_status_is_ok(status) && !found) {
+        status = sc_string_from_str(alloc, sc_string_as_str(&config.provider_default), &provider);
+    }
+    if (sc_status_is_ok(status)) {
+        status = configured_provider_detail(&config, alloc, &provider, "kind", &kind, &found);
+    }
+    if (sc_status_is_ok(status) && !found) {
+        status = sc_string_from_str(alloc, sc_string_as_str(&provider), &kind);
+    }
+    if (sc_status_is_ok(status)) {
+        status = configured_provider_detail(&config, alloc, &provider, "credential_env", &credential_env, &found);
+    }
+    if (sc_status_is_ok(status) && (!found || credential_env.len == 0)) {
+        sc_string_clear(&credential_env);
+        status = sc_string_from_cstr(alloc, cli_provider_default_credential_env(sc_string_as_str(&kind)), &credential_env);
+    }
+    if (sc_status_is_ok(status) && credential_env.len == 0) {
+        status = sc_status_invalid_argument("sc.cli.provider.credential_env_missing");
+    }
+    if (sc_status_is_ok(status)) {
+        env_value = getenv(credential_env.ptr);
+        if (env_value == nullptr || env_value[0] == '\0') {
+            status = sc_status_invalid_argument("sc.cli.provider.credential_env_empty");
+        }
+    }
+    if (sc_status_is_ok(status)) {
+        status = provider_model_path(alloc, sc_string_as_str(&provider), "api_key", &secret_path);
+    }
+    if (sc_status_is_ok(status)) {
+        status = sc_secret_store_file_new(alloc, sc_str_from_parts(nullptr, 0), &secret_store);
+    }
+    if (sc_status_is_ok(status)) {
+        status = sc_secret_store_put(secret_store, sc_string_as_str(&secret_path), sc_str_from_cstr(env_value));
+    }
+    if (sc_status_is_ok(status)) {
+        (void)fprintf(stdout,
+                      "Updated encrypted API key for provider '%s' from environment variable %s.\n",
+                      provider.ptr,
+                      credential_env.ptr);
+        exit_code = 0;
+    } else {
+        sc_app_print_bootstrap_failure(stderr, "provider set-key", &status);
+    }
+
+    sc_status_clear(&status);
+    sc_secret_store_destroy(secret_store);
+    sc_config_diag_clear(&diag);
+    sc_config_clear(&config);
+    sc_string_clear(&secret_path);
+    sc_string_clear(&credential_env);
+    sc_string_clear(&kind);
+    sc_string_clear(&provider);
+    sc_string_clear(&config_body);
+    return exit_code;
+}
+
 int sc_app_run_provider()
 {
     sc_allocator *alloc = sc_allocator_heap();

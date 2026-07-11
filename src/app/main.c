@@ -107,6 +107,9 @@ static int dispatch_command(int argc, char **argv, const sc_cli_parse_result *pa
     if (argc > 1 && strcmp(argv[1], "estop") == 0) {
         return sc_app_run_estop_command(argc > 2 ? argv[2] : "status");
     }
+    if (argc > 2 && strcmp(argv[1], "provider") == 0 && strcmp(argv[2], "set-key") == 0) {
+        return sc_app_run_provider_set_key();
+    }
     if (argc > 2 && strcmp(argv[1], "config") == 0 && strcmp(argv[2], "preset") == 0) {
         return sc_app_run_config_preset(argc > 3 ? argv[3] : "default-posture");
     }
