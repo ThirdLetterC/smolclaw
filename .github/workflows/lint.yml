@@ -12,6 +12,7 @@ on:
       - "cmake/**"
       - "tests/**"
       - "tools/**"
+      - ".gitleaks.toml"
       - ".github/workflows/lint.yml"
   push:
     branches:
@@ -27,6 +28,7 @@ on:
       - "cmake/**"
       - "tests/**"
       - "tools/**"
+      - ".gitleaks.toml"
       - ".github/workflows/lint.yml"
 
 concurrency:

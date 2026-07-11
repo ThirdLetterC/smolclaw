@@ -1,0 +1,9 @@
+title = "SmolClaw Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "RFC 6455 sample WebSocket nonce used by vendor protocol tests"
+targetRules = ["generic-api-key"]
+regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']
