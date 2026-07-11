@@ -1765,7 +1765,6 @@ static sc_status static_open_file(const gateway_static_root *root, sc_str relati
     sc_str filesystem_root = root == nullptr ? sc_str_from_cstr("") : sc_string_as_str(&root->filesystem_root);
     struct stat st = {0};
     int parent_fd = -1;
-    int child_fd = -1;
     size_t start = 0;
 
     if (out_fd == nullptr || filesystem_root.ptr == nullptr || filesystem_root.len == 0 ||
@@ -1797,7 +1796,7 @@ static sc_status static_open_file(const gateway_static_root *root, sc_str relati
         if (!final) {
             flags |= O_DIRECTORY;
         }
-        child_fd = openat(parent_fd, segment, flags);
+        int child_fd = openat(parent_fd, segment, flags);
         if (child_fd < 0) {
             int saved_errno = errno;
             (void)close(parent_fd);
@@ -1807,7 +1806,6 @@ static sc_status static_open_file(const gateway_static_root *root, sc_str relati
         }
         (void)close(parent_fd);
         parent_fd = child_fd;
-        child_fd = -1;
         start = end + 1;
     }
     if (fstat(parent_fd, &st) != 0 || !S_ISREG(st.st_mode)) {

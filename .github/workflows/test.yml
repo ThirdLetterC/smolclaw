@@ -48,6 +48,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: tools/uv.lock
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -65,7 +71,9 @@ jobs:
             zlib1g-dev
 
       - name: Run tests
-        run: make test
+        run: |
+          uv python install 3.14
+          make test PYTHON="$(uv python find 3.14)"
 
   sanitizer:
     name: ASan, UBSan, and LSan
@@ -81,6 +89,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: tools/uv.lock
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -89,7 +103,9 @@ jobs:
             libsqlite3-dev libuv1-dev ninja-build pkg-config zlib1g-dev
 
       - name: Run sanitizer tests
-        run: make sanitizer
+        run: |
+          uv python install 3.14
+          make sanitizer PYTHON="$(uv python find 3.14)"
 
       - name: Build URL fuzz target
         run: |
