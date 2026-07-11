@@ -92,6 +92,9 @@ void sc_app_print_bootstrap_failure(FILE *stream, const char *command, const sc_
     const char *hint = bootstrap_hint_for_error_key(error_key);
 
     (void)fprintf(stream, "smolclaw: %s failed: %s\n", command, error_key);
+    if (status != nullptr && status->message != nullptr && status->message[0] != '\0') {
+        (void)fprintf(stream, "detail: %s\n", status->message);
+    }
     if (hint != nullptr) {
         (void)fprintf(stream, "hint: %s\n", hint);
     }
