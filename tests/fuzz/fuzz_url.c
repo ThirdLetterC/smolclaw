@@ -1,3 +1,5 @@
+#include "compat/c23_keyword_compat.h"
+
 #include "sc/url.h"
 
 #include <stddef.h>
