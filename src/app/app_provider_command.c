@@ -317,7 +317,7 @@ int sc_app_run_provider_set_key()
     sc_config_load_options load = {0};
     sc_secret_store *secret_store = nullptr;
     bool found = false;
-    sc_status status = sc_status_ok();
+    sc_status status;
     int exit_code = 1;
 
     if (config_path == nullptr || config_path[0] == '\0') {
